@@ -1,0 +1,12 @@
+cfg
+
+seed
+ckp_dir
+lr
+lr_decay_gamma
+lr_decay_step
+expr_ID
+dataset_dir
+cuda_id
+dataset
+dataset_dir
