@@ -11,7 +11,7 @@ import logging
 import open3d as o3d
 import torch
 
-from utils_mpi_model import MANO
+from utils.utils_mpi_model import MANO
 
 class Data_preprocess():
         def __init__(self, jointNum, fx, fy, cx, cy, cube):

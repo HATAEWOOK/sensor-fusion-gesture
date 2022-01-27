@@ -6,9 +6,9 @@ Output : rvec
 """
 
 import sys
-from tracemalloc import start
 sys.path.append('.')
 sys.path.append('..')
+sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
 import os
 import numpy as np
 from datetime import datetime
@@ -23,6 +23,8 @@ from tensorboardX import SummaryWriter
 from datasetloader.data_loader_MSRAHT import get_dataset
 from net.hmr import HMR
 from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess
+from utils.config_parser import Config
+from net.hmr import HMR
 
 class Trainer:
     def __init__(self, cfg, model):
@@ -45,6 +47,7 @@ class Trainer:
         logger('tensorboard --logdir=%s' % summary_logdir)
         logger('Torch Version: %s\n' % torch.__version__)
         logger('Base dataset_dir is %s' % cfg.dataset_dir)
+        self.try_num = cfg.try_num
 
 
         self.model = model
@@ -98,7 +101,8 @@ class Trainer:
         self.cfg = cfg
 
     def save_model(self):
-        pass
+        torch.save(self.model.module.state_dict() if isinstance(self.model, torch.nn.DataParallel) 
+                    else self.model.state_dict(), self.cfg.best_model)
 
     def _get_model(self):
         pass
@@ -143,24 +147,11 @@ class Trainer:
         '''
         avg_meter = AverageMeter()
         self.model.train()
-        ckpt = 100
+        ckpt = len(self.test_dataloader) / self.cfg.ckpt_term
         loss_train_set = []
         t = time.time()
 
         for b_idx, (sample) in enumerate(self.train_dataloader):
-            
-            if b_idx % ckpt == 0:
-                term = time.time() - t
-                self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
-                self.logger('Loss : %.5f' % avg_meter.avg)
-                self.logger('time : %.5f' % term)
-
-                print(
-                    f'Step : {b_idx} / {len(self.train_dataloader)},' + \
-                        f'Loss : {avg_meter.avg:.5f},' + \
-                            f'time: {term:.5f},', end = '\r'
-                )
-
             depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
             self.optimizer.zero_grad()
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
@@ -170,9 +161,23 @@ class Trainer:
             pred_depth = m2d.mesh2depth() #[bs, 224, 224]
 
             loss = self.loss(depth_image.squeeze(), pred_depth)
-            loss_train_set[-1].append(loss.item())
+            loss_train_set.append(loss.item())
             loss.backward()
             avg_meter.update(loss.detatch().item(), depth_image.shape[0])
+
+            if (b_idx+1) % ckpt == 0:
+                term = time.time() - t
+                self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
+                self.logger('Train loss : %.5f' % avg_meter.avg)
+                self.logger('time : %.5f' % term)
+
+                print(
+                    f'Step : {b_idx} / {len(self.train_dataloader)},' + \
+                        f'Train loss : {avg_meter.avg:.5f},' + \
+                            f'time: {term:.5f},', end = '\r'
+                )
+
+                print(f'Train loss2 : {np.mean(loss_train_set)}')
 
             self.optimizer.step()
 
@@ -184,33 +189,36 @@ class Trainer:
         self.model.eval()
         ckpt = len(self.test_dataloader) / self.cfg.ckpt_term
         loss_eval_set = []
+        t = time.time()
 
         for b_idx, (sample) in enumerate(self.test_dataloader):
-            
-            if b_idx % ckpt == 0:
-                term = time.time() - t
-                self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
-                self.logger('Loss : %.5f' % avg_meter.avg)
-                self.logger('time : %.5f' % term)
-
-                print(
-                    f'Step : {b_idx} / {len(self.train_dataloader)},' + \
-                        f'Loss : {avg_meter.avg:.5f},' + \
-                            f'time: {term:.5f},', end = '\r'
-                )
-
             with torch.no_grad():
                 depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
+                print("Debug! 나중에 지움! : {}".format(dpeth_image,shape))
                 self.optimizer.zero_grad()
                 keypt, joint, vert, ang, faces, params = self.model(depth_image)
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
                 m2d = Mano2depth(vert, faces)
 
                 pred_depth = m2d.mesh2depth() #[bs, 224, 224]
-
+                print("Debug! 나중에 지움! : {}".format(pred_dpeth,shape))
                 loss = self.loss(depth_image.squeeze(), pred_depth)
-                loss_eval_set[-1].append(loss.item())
+                loss_eval_set.append(loss.item())
                 avg_meter.update(loss.detatch().item(), depth_image.shape[0])
+
+                if b_idx % ckpt == 0:
+                    term = time.time() - t
+                    self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
+                    self.logger('Evaluation loss : %.5f' % avg_meter.avg)
+                    self.logger('time : %.5f' % term)
+
+                    print(
+                        f'Step : {b_idx} / {len(self.train_dataloader)},' + \
+                            f'Evaluation loss : {avg_meter.avg:.5f},' + \
+                                f'time: {term:.5f},', end = '\r'
+                    )
+
+                    print(f'Evaluation oss2 : {np.mean(loss_train_set)}')
 
         return loss_eval_set, avg_meter
 
@@ -223,17 +231,80 @@ class Trainer:
 
         self.logger('Started training at %s for %d epochs' % (datetime.strftime(starttime, '%Y-%m-%d_%H:%M:%S'), n_epochs))
 
+        prev_lr = np.inf
+        best_loss = np.inf
+        loss_train_sets = []
+        loss_eval_sets = []
+
         for epoch_num in range(1, n_epochs + 1):
             self.logger('===== starting Epoch # %03d' % epoch_num)
 
-            loss_train_set, train_avg_meter = self.train()
-            print("[Epoch: %d/%d] Train loss : %.5f" % epoch_num, n_epochs, train_avg_meter.avg)
-            loss_eval_set, eval_avg_meter = self.eval()
-            print("[Epoch: %d/%d] Evaluation loss : %.5f" % epoch_num, n_epochs, train_avg_meter.avg)
+            loss_train_sets.append([])
+            loss_eval_sets.append([])
 
-            if True: # self.cfg.fitting?
+            loss_train_set, train_avg_meter = self.train()
+            loss_train_sets[-1].append(loss_train_set)
+
+            if train_avg_meter.avg != np.mean(loss_train_sets[-1]):
+                print("Something wrong") #나중에 없앰
+
+            print("[Epoch: %d/%d] Train loss : %.5f" % epoch_num, n_epochs, train_avg_meter.avg)
+            
+            loss_eval_set, eval_avg_meter = self.eval()
+            loss_eval_sets[-1].append(loss_eval_set)
+            print("[Epoch: %d/%d] Evaluation loss : %.5f" % epoch_num, n_epochs, eval_avg_meter.avg)
+
+            if self.cfg.fitting: 
                 if self.cfg.lr_decay_gamma:
                     self.scheduler.step()
+                cur_lr = self.optimizer.param_groups[0]['lr']
+
+                if cur_lr != prev_lr:
+                    self.logger('====== Learning rate changed! %.2e -> %.2e ======' % (prev_lr, cur_lr))
+                    prev_lr = cur_lr
+
+            if eval_avg_meter.avg < best_loss:
+                best_model_dir = os.path.join(self.cfg.ckp_dir, 'best_model')
+                if not os.path.exists(best_model_dir):
+                    os.makedirs(best_model_dir)
+                self.cfg.best_model = os.path.join(best_model_dir, 'S%02d_%03d_net.pt' % (self.try_num, epoch_num))
+                self.save_model()
+                self.logger(f'Model saved! Try num : {self.try_num}, Epochs : {epoch_num}, Loss : {eval_avg_meter.avg}, Time : {datetime.now().replace(microsecond=0)}')
+                self.best_loss = eval_avg_meter.avg
+
+        endtime = datetime.now().replace(microsecond=0)
+        self.logger('Finished Training at %s\n' % (datetime.strftime(endtime, '%Y-%m-%d_%H:%M:%S')))
+        self.logger('Training time : %s\n' % (endtime - starttime))
+        self.logger('Best loss : %s\n' % best_loss)
+        self.logger('Best model : %s\n' % self.cfg.best_model)
 
 
+if __name__ == "__main__":
+    config = {
+        'manual_seed' : None,
+        'ckp_dir' : None,
+        'lr' : None,
+        'lr_decay_gamma' : None,
+        'lr_decay_step' : None,
+        'expr_ID' : None,
+        'cuda_id' : None,
+        'dataset' : None,
+        'dataset_dir' : None,
+        'try_num' : None,
+        'optimizer' : None,
+        'weight_dacay' : None, 
+        'momentum' : None,
+        'cuda_id' : None, 
+        'use_multigpu' : None,
+        'best_model' : None, 
+        'num_workers' : None, 
+        'batch_size' : None, 
+        'ckpt_term' : None, 
+        'n_epochs' : None,
+        'fitting' : True,
+    }
 
+    cfg = Config(**config)
+    model = HMR()
+    trainer = Trainer(cfg, model)
+    
