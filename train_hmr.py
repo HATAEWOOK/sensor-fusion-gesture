@@ -6,12 +6,14 @@ Output : rvec
 """
 
 import sys
+from tracemalloc import start
 sys.path.append('.')
 sys.path.append('..')
 import os
 import numpy as np
 from datetime import datetime
 import random
+import time
 
 import torch
 from torch import nn, optim
@@ -141,11 +143,24 @@ class Trainer:
         '''
         avg_meter = AverageMeter()
         self.model.train()
-        ckpt = len(self.train_dataloader) / self.cfg.ckpt_term
+        ckpt = 100
         loss_train_set = []
+        t = time.time()
 
         for b_idx, (sample) in enumerate(self.train_dataloader):
-            #ToDo ckpt에 따라 self.logger(train info, loss info)
+            
+            if b_idx % ckpt == 0:
+                term = time.time() - t
+                self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
+                self.logger('Loss : %.5f' % avg_meter.avg)
+                self.logger('time : %.5f' % term)
+
+                print(
+                    f'Step : {b_idx} / {len(self.train_dataloader)},' + \
+                        f'Loss : {avg_meter.avg:.5f},' + \
+                            f'time: {term:.5f},', end = '\r'
+                )
+
             depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
             self.optimizer.zero_grad()
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
@@ -160,8 +175,6 @@ class Trainer:
             avg_meter.update(loss.detatch().item(), depth_image.shape[0])
 
             self.optimizer.step()
-            if self.cfg.lr_decay_gamma:
-                self.scheduler.step()
 
         return loss_train_set, avg_meter
 
@@ -173,7 +186,19 @@ class Trainer:
         loss_eval_set = []
 
         for b_idx, (sample) in enumerate(self.test_dataloader):
-            #ToDo ckpt에 따라 self.logger(train info, loss info)
+            
+            if b_idx % ckpt == 0:
+                term = time.time() - t
+                self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
+                self.logger('Loss : %.5f' % avg_meter.avg)
+                self.logger('time : %.5f' % term)
+
+                print(
+                    f'Step : {b_idx} / {len(self.train_dataloader)},' + \
+                        f'Loss : {avg_meter.avg:.5f},' + \
+                            f'time: {term:.5f},', end = '\r'
+                )
+
             with torch.no_grad():
                 depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
                 self.optimizer.zero_grad()
@@ -189,8 +214,26 @@ class Trainer:
 
         return loss_eval_set, avg_meter
 
-    def fit(self):
-        pass
+    def fit(self, n_epochs = None):
+
+        starttime = datetime.now().replace(microsecond=0)
+
+        if n_epochs is None:
+            n_epochs = self.cfg.n_epochs
+
+        self.logger('Started training at %s for %d epochs' % (datetime.strftime(starttime, '%Y-%m-%d_%H:%M:%S'), n_epochs))
+
+        for epoch_num in range(1, n_epochs + 1):
+            self.logger('===== starting Epoch # %03d' % epoch_num)
+
+            loss_train_set, train_avg_meter = self.train()
+            print("[Epoch: %d/%d] Train loss : %.5f" % epoch_num, n_epochs, train_avg_meter.avg)
+            loss_eval_set, eval_avg_meter = self.eval()
+            print("[Epoch: %d/%d] Evaluation loss : %.5f" % epoch_num, n_epochs, train_avg_meter.avg)
+
+            if True: # self.cfg.fitting?
+                if self.cfg.lr_decay_gamma:
+                    self.scheduler.step()
 
 
 
