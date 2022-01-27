@@ -1,12 +1,23 @@
 cfg
 
-seed
+manual_seed
 ckp_dir
 lr
 lr_decay_gamma
 lr_decay_step
 expr_ID
-dataset_dir
 cuda_id
 dataset
 dataset_dir
+try_num
+optimizer
+weight_decay
+momentum
+cuda_id
+use_multigpu
+best_model
+num_workers
+batch_size
+ckpt_term
+n_epochs
+fitiing
