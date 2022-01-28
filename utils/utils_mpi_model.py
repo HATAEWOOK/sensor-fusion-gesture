@@ -13,8 +13,9 @@ import pickle
 import numpy as np
 import torch.nn as nn
 import sys
-sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
-
+# sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
+sys.path.append('.')
+sys.path.append('..')
 import os.path
 
 from utils.utils_linear_blend_skinning import lbs

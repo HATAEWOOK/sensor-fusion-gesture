@@ -1,9 +1,5 @@
-from functools import total_ordering
 from shutil import ExecError
 import sys
-from winreg import QueryValue
-
-from zmq import PROTOCOL_ERROR_ZMTP_MALFORMED_COMMAND_MESSAGE
 sys.path.append('.')
 sys.path.append('..')
 import os
@@ -109,7 +105,8 @@ class MSRA_HT:
 
 
 if __name__ == '__main__':
-    path = 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB'
+    # path = 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB'
+    path = '/root/Dataset/cvpr'
     query = ['processed', 'com', 'cropped']
 
     tmp = get_dataset(

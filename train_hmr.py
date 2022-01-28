@@ -8,7 +8,8 @@ Output : rvec
 import sys
 sys.path.append('.')
 sys.path.append('..')
-sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
+# sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
+sys.path.append('/root/sensor-fusion-gesture')
 import os
 import numpy as np
 from datetime import datetime
@@ -75,14 +76,18 @@ class Trainer:
         use_cuda = torch.cuda.is_available()
         if use_cuda:
             torch.cuda.empty_cache()
-            gpu_brand = torch.cuda.get_device_name(cfg.cuda_id) if use_cuda else None
-            gpu_count = torch.cuda.device_count() if cfg.use_multigpu else 1
+        self.device = torch.device("cuda:%d" % cfg.cuda_id if use_cuda else "cpu")
+
+        gpu_brand = torch.cuda.get_device_name(cfg.cuda_id) if use_cuda else None
+        gpu_count = torch.cuda.device_count() if cfg.use_multigpu else 1
+        if use_cuda:
             logger('Using %d CUDA cores [%s] for training!' % (gpu_count, gpu_brand))
-        self.device = torch.device("cuda%d" % cfg.cuda_id if use_cuda else "cpu")
         self.model.to(self.device)
         if cfg.use_multigpu:
             self.model = torch.nn.DataParallel(self.model)
             logger("Training on Multiple GPU's")
+
+        self.load_data(cfg)
 
         # load learning rate
         for group in optimizer.param_groups:
@@ -107,7 +112,7 @@ class Trainer:
     def _get_model(self):
         pass
 
-    def load_dat(self, cfg):
+    def load_data(self, cfg):
         '''
         self.train_dataloader / self.val_dataloader ('depth','processed', 'cropped', 'trans')
         queries
@@ -150,9 +155,10 @@ class Trainer:
         ckpt = len(self.test_dataloader) / self.cfg.ckpt_term
         loss_train_set = []
         t = time.time()
+        sample = {}
 
         for b_idx, (sample) in enumerate(self.train_dataloader):
-            depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
+            depth_image = sample['processed'].to(self.device) #[bs, 1, 224, 224]
             self.optimizer.zero_grad()
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
             # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
@@ -194,14 +200,14 @@ class Trainer:
         for b_idx, (sample) in enumerate(self.test_dataloader):
             with torch.no_grad():
                 depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
-                print("Debug! 나중에 지움! : {}".format(dpeth_image,shape))
+                print("Debug! 나중에 지움! : {}".format(depth_image.shape))
                 self.optimizer.zero_grad()
                 keypt, joint, vert, ang, faces, params = self.model(depth_image)
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
                 m2d = Mano2depth(vert, faces)
 
                 pred_depth = m2d.mesh2depth() #[bs, 224, 224]
-                print("Debug! 나중에 지움! : {}".format(pred_dpeth,shape))
+                print("Debug! 나중에 지움! : {}".format(pred_depth.shape))
                 loss = self.loss(depth_image.squeeze(), pred_depth)
                 loss_eval_set.append(loss.item())
                 avg_meter.update(loss.detatch().item(), depth_image.shape[0])
@@ -218,7 +224,7 @@ class Trainer:
                                 f'time: {term:.5f},', end = '\r'
                     )
 
-                    print(f'Evaluation oss2 : {np.mean(loss_train_set)}')
+                    print(f'Evaluation oss2 : {np.mean(loss_eval_set)}')   
 
         return loss_eval_set, avg_meter
 
@@ -281,30 +287,29 @@ class Trainer:
 
 if __name__ == "__main__":
     config = {
-        'manual_seed' : None,
-        'ckp_dir' : None,
-        'lr' : None,
-        'lr_decay_gamma' : None,
-        'lr_decay_step' : None,
-        'expr_ID' : None,
-        'cuda_id' : None,
-        'dataset' : None,
-        'dataset_dir' : None,
-        'try_num' : None,
-        'optimizer' : None,
-        'weight_dacay' : None, 
-        'momentum' : None,
-        'cuda_id' : None, 
-        'use_multigpu' : None,
+        'manual_seed' : 24587,
+        'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
+        'lr' : 1e-4,
+        'lr_decay_gamma' : 0.1,
+        'lr_decay_step' : 30,
+        'expr_ID' : 'test1',
+        'cuda_id' : 0,
+        'dataset' : 'MSRA_HT',
+        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        'try_num' : 0,
+        'optimizer' : 'adam',
+        'weight_decay' : 0,
+        'momentum' : 0,
+        'use_multigpu' : False,
         'best_model' : None, 
-        'num_workers' : None, 
-        'batch_size' : None, 
-        'ckpt_term' : None, 
-        'n_epochs' : None,
+        'num_workers' : 2, 
+        'batch_size' : 10, 
+        'ckpt_term' : 100, 
+        'n_epochs' : 10,
         'fitting' : True,
     }
 
     cfg = Config(**config)
     model = HMR()
     trainer = Trainer(cfg, model)
-    
+    trainer.fit()

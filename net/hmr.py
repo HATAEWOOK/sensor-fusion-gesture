@@ -7,7 +7,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import sys
-sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
+# sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
+sys.path.append('.')
+sys.path.append('..')
 
 from utils.linear_model import LinearModel
 
@@ -166,6 +168,7 @@ if __name__ == '__main__':
 
     bs = 10 # Batch size
     image = torch.randn(bs,1,224,224)
+    print(image.shape)
     keypt, joint, vert, ang, faces, params = model(image)
 
     print('keypt', keypt.shape) # [bs,21,2]

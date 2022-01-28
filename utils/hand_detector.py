@@ -1,7 +1,7 @@
 '''
 detecting hand
 '''
-from cvzone.HandTrackingModule import HandDetector
+# from cvzone.HandTrackingModule import HandDetector
 import cv2
 import numpy as np
 import os
