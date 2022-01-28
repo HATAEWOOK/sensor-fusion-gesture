@@ -334,11 +334,12 @@ class MANO(nn.Module):
 if __name__ == '__main__':
     import argparse
     import open3d as o3d
+    import matplotlib.pyplot as plt
 
-    bs = 10 # Batchsize
+    bs = 1 # Batchsize
     beta = torch.zeros([bs,10], dtype=torch.float32)
     # rvec = torch.zeros([bs,3], dtype=torch.float32)
-    rvec = torch.tensor([[np.pi/2,0,0]], dtype=torch.float32)
+    rvec = torch.tensor([[np.pi/2,-np.pi,np.pi/2]], dtype=torch.float32)
     tvec = torch.zeros([bs,3], dtype=torch.float32)
 
     model = MANO()
@@ -350,6 +351,21 @@ if __name__ == '__main__':
     print('joints', joints.shape, joints.dtype)       # torch.Size([10, 21, 3]) torch.float32
 
 
+
+    w = 320
+    h = 240
+    fx = fy = 241.42
+    cx = w / 2 - 0.5
+    cy = h / 2 - 0.5
+    cube = [200,200,200]
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(visible = False, width = w, height = h)
+    vc = vis.get_view_control()
+    camera_param = vc.convert_to_pinhole_camera_parameters()
+    camera_param.intrinsic.set_intrinsics(w, h, fx, fy, w / 2 - 0.5,  h / 2 - 0.5)
+    vc.convert_from_pinhole_camera_parameters(camera_param)
+    param = vc.convert_to_pinhole_camera_parameters().intrinsic.intrinsic_matrix
+
     ########################################
     ### Quick visualization using Open3D ###
     ########################################
@@ -360,19 +376,10 @@ if __name__ == '__main__':
     mesh.vertices = o3d.utility.Vector3dVector(vertices[0,:,:])
     mesh.triangles = o3d.utility.Vector3iVector(model.F)
     mesh.compute_vertex_normals()
-    mesh.paint_uniform_color([0.75, 0.75, 0.75])
     # Draw wireframe
-    ls = o3d.geometry.LineSet.create_from_triangle_mesh(mesh)
-    ls.paint_uniform_color([0.75, 0.75, 0.75])
-    # Draw joints
-    mesh_spheres = []
-    for j in joints[0,:,:]:
-        m = o3d.geometry.TriangleMesh.create_sphere(radius=0.001)
-        m.compute_vertex_normals()
-        m.paint_uniform_color([1,0,0])
-        m.translate(j)
-        mesh_spheres.append(m)
-
-    # print(mesh)
-    o3d.visualization.draw_geometries([mesh, mesh_frame])
-    # o3d.visualization.draw_geometries([ls, mesh_frame] + mesh_spheres
+    vis.add_geometry(mesh)
+    depth = vis.capture_depth_float_buffer(True)
+    # o3d.visualization.draw_geometries([mesh, mesh_frame])
+    plt.figure()
+    plt.imshow(depth)
+    plt.show()

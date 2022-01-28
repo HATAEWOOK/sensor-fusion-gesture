@@ -90,6 +90,7 @@ class HMR(nn.Module):
 
         pose = self.mano.convert_ang_to_pose(ang)
         vert, joint = self.mano(beta, pose, rvec)
+        print('==================', rvec[0], '======================')
         faces = self.mano.F
 
         # Convert from m to mm

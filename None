@@ -1,8 +1,44 @@
-2022-01-28 09:15:04,728 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-01-28 09:15:04
-2022-01-28 09:15:04,731 - root - INFO - tensorboard --logdir=/root/sensor-fusion-gesture/ckp/summaries
-2022-01-28 09:15:04,731 - root - INFO - Torch Version: 1.10.1
+2022-01-28 14:41:45,692 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-01-28 14:41:45
+2022-01-28 14:41:45,692 - root - INFO - tensorboard --logdir=./ckp\summaries
+2022-01-28 14:41:45,693 - root - INFO - Torch Version: 1.10.1
 
-2022-01-28 09:15:04,732 - root - INFO - Base dataset_dir is /root/Dataset/cvpr14_MSRAHandTrackingDB
-2022-01-28 09:15:04,761 - root - INFO - Using 1 CUDA cores [TITAN RTX] for training!
-2022-01-28 09:15:09,682 - root - INFO - Started training at 2022-01-28_09:15:09 for 10 epochs
-2022-01-28 09:15:09,682 - root - INFO - ===== starting Epoch # 001
+2022-01-28 14:41:45,693 - root - INFO - Base dataset_dir is D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB
+2022-01-28 14:41:45,725 - root - INFO - Using 1 CUDA cores [NVIDIA GeForce RTX 3080] for training!
+2022-01-28 14:41:46,466 - root - INFO - Started training at 2022-01-28_14:41:46 for 50 epochs
+2022-01-28 14:41:46,467 - root - INFO - ===== starting Epoch # 001
+2022-01-28 14:42:01,189 - root - INFO - Step : 10/96
+2022-01-28 14:42:01,189 - root - INFO - Train loss : 0.09743
+2022-01-28 14:42:01,189 - root - INFO - time : 14.71931
+2022-01-28 14:42:05,225 - root - INFO - Step : 20/96
+2022-01-28 14:42:05,225 - root - INFO - Train loss : 0.09000
+2022-01-28 14:42:05,226 - root - INFO - time : 18.75571
+2022-01-28 14:42:09,244 - root - INFO - Step : 30/96
+2022-01-28 14:42:09,245 - root - INFO - Train loss : 0.08673
+2022-01-28 14:42:09,245 - root - INFO - time : 22.77505
+2022-01-28 14:42:13,314 - root - INFO - Step : 40/96
+2022-01-28 14:42:13,315 - root - INFO - Train loss : 0.08532
+2022-01-28 14:42:13,316 - root - INFO - time : 26.84513
+2022-01-28 14:42:17,402 - root - INFO - Step : 50/96
+2022-01-28 14:42:17,403 - root - INFO - Train loss : 0.08322
+2022-01-28 14:42:17,403 - root - INFO - time : 30.93286
+2022-01-28 14:42:21,455 - root - INFO - Step : 60/96
+2022-01-28 14:42:21,456 - root - INFO - Train loss : 0.08249
+2022-01-28 14:42:21,456 - root - INFO - time : 34.98597
+2022-01-28 14:42:25,509 - root - INFO - Step : 70/96
+2022-01-28 14:42:25,510 - root - INFO - Train loss : 0.08241
+2022-01-28 14:42:25,510 - root - INFO - time : 39.03968
+2022-01-28 14:42:29,512 - root - INFO - Step : 80/96
+2022-01-28 14:42:29,512 - root - INFO - Train loss : 0.08183
+2022-01-28 14:42:29,512 - root - INFO - time : 43.04272
+2022-01-28 14:42:33,581 - root - INFO - Step : 90/96
+2022-01-28 14:42:33,582 - root - INFO - Train loss : 0.08177
+2022-01-28 14:42:33,583 - root - INFO - time : 47.11215
+2022-01-28 14:42:46,376 - root - INFO - Step : 10/24
+2022-01-28 14:42:46,376 - root - INFO - Evaluation loss : 0.07566
+2022-01-28 14:42:46,376 - root - INFO - time : 10.09134
+2022-01-28 14:42:50,629 - root - INFO - Step : 20/24
+2022-01-28 14:42:50,630 - root - INFO - Evaluation loss : 0.07403
+2022-01-28 14:42:50,630 - root - INFO - time : 14.34446
+2022-01-28 14:42:52,735 - root - INFO - ====== Learning rate changed! inf -> 1.00e-01 ======
+2022-01-28 14:42:53,168 - root - INFO - Model saved! Try num : 0, Epochs : 1, Loss : 0.07511184364557266, Time : 2022-01-28 14:42:53
+2022-01-28 14:42:53,168 - root - INFO - ===== starting Epoch # 002

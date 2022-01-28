@@ -1,3 +1,5 @@
+from ast import expr_context
+from operator import indexOf
 from shutil import ExecError
 import sys
 sys.path.append('.')
@@ -62,6 +64,7 @@ class Dataload(Dataset):
             depth_train, _, com  = self.dp.preprocess_depth(depth)
             sample['processed'] = self.totensor(depth_train).float()
             sample['com'] = torch.FloatTensor(com)
+            sample['name'] = self.hand_dataset.get_filename(idx)
         return sample
     
     def __getitem__(self, idx):
@@ -96,6 +99,10 @@ class MSRA_HT:
         depth = depth.reshape(240,320)
         return depth
 
+    def get_filename(self, idx):
+        name = self.filenames[idx]
+        return name
+
     def get_j3d(self, idx):
         pass
 
@@ -105,8 +112,8 @@ class MSRA_HT:
 
 
 if __name__ == '__main__':
-    # path = 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB'
-    path = '/root/Dataset/cvpr'
+    path = 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB'
+    # path = '/root/Dataset/cvpr'
     query = ['processed', 'com', 'cropped']
 
     tmp = get_dataset(
@@ -123,10 +130,8 @@ if __name__ == '__main__':
     train_loader = torch.utils.data.DataLoader(train_da, batch_size=10,shuffle = True)
     test_loader = torch.utils.data.DataLoader(test_da, batch_size=10,shuffle = True)
 
-    for idx, (sample) in enumerate(train_loader):
+    for idx, (sample) in enumerate(test_loader):
         print(idx)
-        print(sample['processed'].shape)
-        break
 
 
     # JOINT_NUM = 21

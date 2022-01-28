@@ -4,8 +4,9 @@ Trainting for get rotation of hand from mano hand model
 Input : RGB(? x ?)
 Output : rvec
 """
-
+# ToDO : ADD joint loss!!!!
 import sys
+from tracemalloc import start
 sys.path.append('.')
 sys.path.append('..')
 # sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
@@ -23,7 +24,7 @@ from tensorboardX import SummaryWriter
 
 from datasetloader.data_loader_MSRAHT import get_dataset
 from net.hmr import HMR
-from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess
+from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess, set_vis, save_image
 from utils.config_parser import Config
 from net.hmr import HMR
 
@@ -57,7 +58,7 @@ class Trainer:
         # Initialize optimizer
         if cfg.optimizer == "adam":
             optimizer = torch.optim.Adam(
-                model_params, lr=cfg.lr, weight_decay=cfg.weight_decay
+                model_params, lr=cfg.lr, weight_decay=cfg.weight_decay, betas=(0.5, 0.99)
             )
         elif cfg.optimizer == "rms":
             optimizer = torch.optim.RMSprop(
@@ -104,6 +105,8 @@ class Trainer:
 
         # etc
         self.cfg = cfg
+        self.vis = set_vis()
+        self.start_epoch = 0
 
     def save_model(self):
         torch.save(self.model.module.state_dict() if isinstance(self.model, torch.nn.DataParallel) 
@@ -137,6 +140,7 @@ class Trainer:
         train_data, test_data = torch.utils.data.random_split(dataset, [train_size, test_size])
         self.train_dataloader = DataLoader(train_data, **kwargs)
         self.test_dataloader = DataLoader(test_data, **kwargs)
+        print("Data size : ",len(self.train_dataloader), len(self.test_dataloader))
 
 
     def train(self):
@@ -152,33 +156,34 @@ class Trainer:
         '''
         avg_meter = AverageMeter()
         self.model.train()
-        ckpt = len(self.test_dataloader) / self.cfg.ckpt_term
+        # ckpt = len(self.test_dataloader) / self.cfg.ckpt_term
+        ckpt = 10
         loss_train_set = []
         t = time.time()
-        sample = {}
+        self.start_epoch += 1
 
         for b_idx, (sample) in enumerate(self.train_dataloader):
             depth_image = sample['processed'].to(self.device) #[bs, 1, 224, 224]
+            coms = sample['com']
             self.optimizer.zero_grad()
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
             # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
             m2d = Mano2depth(vert, faces)
-
-            pred_depth = m2d.mesh2depth() #[bs, 224, 224]
-
-            loss = self.loss(depth_image.squeeze(), pred_depth)
+            pred_depth = m2d.mesh2depth(self.vis, coms) #[bs, 224, 224]
+            loss = self.loss(depth_image.squeeze(), pred_depth.to(self.device))
             loss_train_set.append(loss.item())
+            loss.requires_grad_(True)
             loss.backward()
-            avg_meter.update(loss.detatch().item(), depth_image.shape[0])
+            avg_meter.update(loss.detach().item(), depth_image.shape[0])
 
             if (b_idx+1) % ckpt == 0:
                 term = time.time() - t
-                self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
+                self.logger('Step : %s/%s' % (b_idx+1, len(self.train_dataloader)))
                 self.logger('Train loss : %.5f' % avg_meter.avg)
                 self.logger('time : %.5f' % term)
 
                 print(
-                    f'Step : {b_idx} / {len(self.train_dataloader)},' + \
+                    f'Step : {b_idx+1} / {len(self.train_dataloader)},' + \
                         f'Train loss : {avg_meter.avg:.5f},' + \
                             f'time: {term:.5f},', end = '\r'
                 )
@@ -193,38 +198,44 @@ class Trainer:
     def eval(self):
         avg_meter = AverageMeter()
         self.model.eval()
-        ckpt = len(self.test_dataloader) / self.cfg.ckpt_term
+        # ckpt = len(self.test_dataloader) / self.cfg.ckpt_term
+        ckpt = 10
         loss_eval_set = []
         t = time.time()
 
         for b_idx, (sample) in enumerate(self.test_dataloader):
             with torch.no_grad():
                 depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
-                print("Debug! 나중에 지움! : {}".format(depth_image.shape))
+                coms = sample['com']
                 self.optimizer.zero_grad()
                 keypt, joint, vert, ang, faces, params = self.model(depth_image)
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
                 m2d = Mano2depth(vert, faces)
 
-                pred_depth = m2d.mesh2depth() #[bs, 224, 224]
-                print("Debug! 나중에 지움! : {}".format(pred_depth.shape))
-                loss = self.loss(depth_image.squeeze(), pred_depth)
+                pred_depth = m2d.mesh2depth(self.vis, coms) #[bs, 224, 224]
+                loss = self.loss(depth_image.squeeze(), pred_depth.to(self.device))
+                loss.requires_grad_(True)
                 loss_eval_set.append(loss.item())
-                avg_meter.update(loss.detatch().item(), depth_image.shape[0])
+                avg_meter.update(loss.detach().item(), depth_image.shape[0])
 
-                if b_idx % ckpt == 0:
+                if (b_idx+1) % ckpt == 0:
                     term = time.time() - t
-                    self.logger('Step : %s' % ({b_idx} / {len(self.train_dataloader)}))
+                    self.logger('Step : %s/%s' % (b_idx+1, len(self.test_dataloader)))
                     self.logger('Evaluation loss : %.5f' % avg_meter.avg)
                     self.logger('time : %.5f' % term)
 
                     print(
-                        f'Step : {b_idx} / {len(self.train_dataloader)},' + \
+                        f'Step : {b_idx+1} / {len(self.test_dataloader)},' + \
                             f'Evaluation loss : {avg_meter.avg:.5f},' + \
                                 f'time: {term:.5f},', end = '\r'
                     )
 
-                    print(f'Evaluation oss2 : {np.mean(loss_eval_set)}')   
+                    print(f'Evaluation loss2 : {np.mean(loss_eval_set)}')   
+
+                    pred = pred_depth[0]
+                    target = depth_image[0]
+                    save_image(pred, os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred.png'%(self.start_epoch, b_idx+1)))
+                    save_image(target, os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_target.png'%(self.start_epoch, b_idx+1)))
 
         return loss_eval_set, avg_meter
 
@@ -254,11 +265,11 @@ class Trainer:
             if train_avg_meter.avg != np.mean(loss_train_sets[-1]):
                 print("Something wrong") #나중에 없앰
 
-            print("[Epoch: %d/%d] Train loss : %.5f" % epoch_num, n_epochs, train_avg_meter.avg)
+            print("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
             
             loss_eval_set, eval_avg_meter = self.eval()
             loss_eval_sets[-1].append(loss_eval_set)
-            print("[Epoch: %d/%d] Evaluation loss : %.5f" % epoch_num, n_epochs, eval_avg_meter.avg)
+            print("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
 
             if self.cfg.fitting: 
                 if self.cfg.lr_decay_gamma:
@@ -288,24 +299,26 @@ class Trainer:
 if __name__ == "__main__":
     config = {
         'manual_seed' : 24587,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
-        'lr' : 1e-4,
-        'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 30,
+        # 'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
+        'ckp_dir' : './ckp',
+        'lr' : 0.1,
+        'lr_decay_gamma' : 1e-6,
+        'lr_decay_step' : 10,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
         'dataset' : 'MSRA_HT',
-        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        # 'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
         'try_num' : 0,
-        'optimizer' : 'adam',
+        'optimizer' : 'sgd',
         'weight_decay' : 0,
-        'momentum' : 0,
+        'momentum' : 1.9,
         'use_multigpu' : False,
         'best_model' : None, 
         'num_workers' : 2, 
-        'batch_size' : 10, 
+        'batch_size' : 20, 
         'ckpt_term' : 100, 
-        'n_epochs' : 10,
+        'n_epochs' : 50,
         'fitting' : True,
     }
 

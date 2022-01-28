@@ -10,6 +10,7 @@ from torch.utils.data import Subset
 import logging
 import open3d as o3d
 import torch
+import matplotlib.pyplot as plt
 
 from utils.utils_mpi_model import MANO
 
@@ -24,12 +25,18 @@ class Data_preprocess():
                 self.cube = cube
                 self.rng = np.random.RandomState(23455)
 
-        def preprocess_depth(self, depth_orig):
+        def preprocess_depth(self, depth_orig, com = None, preprocess = True):
                 depth_orig[depth_orig>500]=0
-                com = self.calculateCOM(depth_orig)
-                com, depth_crop, window = self.refineCOMIterative(depth_orig, com, 3)
-                depth_train = self.makeLearningImage(depth_crop, com)
-                self.window = window
+                if com is None:
+                        com = self.calculateCOM(depth_orig)
+                if preprocess:
+                        com, depth_crop, window = self.refineCOMIterative(depth_orig, com, 3)
+                        depth_train = self.makeLearningImage(depth_crop, com)
+                        self.window = window
+                else: 
+                        _, depth_crop, window = self.refineCOMIterative(depth_orig, com, 3)
+                        depth_train = self.makeLearningImage(depth_crop, com)
+                        self.window = window
 
                 return depth_train, depth_crop, com
 
@@ -82,7 +89,7 @@ class Data_preprocess():
                 fy=self.fy
                 
                 zstart = com[2] - size[2] / 2.
-                zend = com[2] + size[2] / 2.
+                zend = com[2] + size[2] / 2
                 xstart = int(np.floor((com[0] * com[2] / fx - size[0] / 2.) / com[2]*fx))
                 xend = int(np.floor((com[0] * com[2] / fx + size[0] / 2.) / com[2]*fx))
                 ystart = int(np.floor((com[1] * com[2] / fy - size[1] / 2.) / com[2]*fy))
@@ -93,10 +100,10 @@ class Data_preprocess():
         def calculateCOM(self,dimg,minDepth=10,maxDepth=1000):
                 
                 dc=dimg.copy()
-                
+
                 dc[dc<minDepth]=0
                 dc[dc>maxDepth]=0
-                
+
                 cc= ndimage.measurements.center_of_mass(dc>0) #0.001
                 
                 num=np.count_nonzero(dc) #0.0005
@@ -104,8 +111,9 @@ class Data_preprocess():
                 com=np.array((cc[1]*num,cc[0]*num,dc.sum()),np.float64) #0.0002
                 
                 if num==0:
-                        print('com can not be calculated (calculateCOM)')
-                        return np.zeros(3)
+                        # raise Exception('com can not be calculated (calculateCOM)')  
+                        # print('com can not be calculated (calculateCOM)')
+                        return np.asarray([0.000001,0.000001,0.000001])
                 else:
                         return com/num
 
@@ -169,48 +177,69 @@ class AverageMeter():
                 self.count += n
                 self.avg = self.sum / self.count
 
+def set_vis():
+        w = 320
+        h = 240
+        fx = fy = 241.42
+        cx = w / 2 - 0.5
+        cy = h / 2 - 0.5
+        cube = [200,200,200]
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(visible = False, width = w, height = h)
+        vc = vis.get_view_control()
+        camera_param = vc.convert_to_pinhole_camera_parameters()
+        camera_param.intrinsic.set_intrinsics(w, h, fx, fy, w / 2 - 0.5,  h / 2 - 0.5)
+        vc.convert_from_pinhole_camera_parameters(camera_param)
+        param = vc.convert_to_pinhole_camera_parameters().intrinsic.intrinsic_matrix
+        print("Rendering camera intrinsic parameters is fx : {}, fy : {}, cx : {}, cy : {}".format(param[0][0], param[1][1], param[0][2], param[1][2]))
+
+        return vis
+
 class Mano2depth():
         def __init__(self, verts, faces):
                 #MSRA camera intrinsic parameters
-                w = 320
-                h = 240
-                fx = fy = 241.42
-                cx = w / 2 - 0.5
-                cy = h / 2 - 0.5
-                cube = [200,200,200]
-                self.dp = Data_preprocess(21, fx, fy, cx, cy, cube)
+                self.w = 320
+                self.h = 240
+                self.fx = self.fy = 241.42
+                self.cx = self.w / 2 - 0.5
+                self.cy = self.h / 2 - 0.5
+                self.cube = [200,200,200]
+                self.dp = Data_preprocess(21, self.fx, self.fy, self.cx, self.cy, self.cube)
 
                 self.verts = verts
                 self.faces = faces
                 self.bs = verts.shape[0]
-                self.vis = o3d.visualization.Visualizer()
-                self.vis.create_window(visible = False, width = w, height = h)
-                vc = self.vis.get_view_control()
-                camera_param = vc.convert_to_pinhole_camera_parameters()
-                camera_param.intrinsic.set_intrinsics(w, h, fx, fy, w / 2 - 0.5,  h / 2 - 0.5)
-                vc.convert_from_pinhole_camera_parameters(camera_param)
-                param = vc.convert_to_pinhole_camera_parameters().intrinsic.intrinsic_matrix
-                print("Rendering camera intrinsic parameters is fx : {}, fy : {}, cx : {}, cy : {}".format(param[0][0], param[1][1], param[0][2], param[1][2]))
-
-
-        def mesh2depth(self):
+                
+        def mesh2depth(self, vis, coms):
                 depths = []
-                for vert in self.verts:
+                for vert, com in zip(self.verts, coms):
                         mesh = o3d.geometry.TriangleMesh()
+                        vert = vert.detach().cpu()
                         mesh.vertices = o3d.utility.Vector3dVector(vert)
                         mesh.triangles = o3d.utility.Vector3iVector(self.faces)
                         mesh.compute_vertex_normals()
-                        self.vis.add_geometry(mesh)
-                        depth = self.vis.capture_depth_float_buffer(True)
-                        self.vis.clear_geometries()
-                        depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth)*100)
+                        vis.add_geometry(mesh)
+                        depth = vis.capture_depth_float_buffer(True)
+                        vis.clear_geometries()
+                        depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth), np.asarray(com), preprocess = False)
                         depths.append(depth_train)
-
-                self.vis.destroy_window()
 
                 if len(depths) != self.bs: return print("Error in mesh2depth")
 
                 return torch.FloatTensor(np.asarray(depths))
+
+def save_image(img, path):
+        img = img.squeeze().cpu()
+        img *= 100
+        fig = plt.figure(1, figsize=[6, 6])
+        if np.ndim(img) == 2:
+                plt.imshow(img, cmap='gray')
+        else:
+                plt.imshow(img)
+
+        plt.axis('off')
+        fig.savefig(path)
+        plt.close(fig)
 
 if __name__ == "__main__":
         bs = 10 # Batchsize
