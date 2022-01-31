@@ -90,8 +90,20 @@ class HMR(nn.Module):
 
         pose = self.mano.convert_ang_to_pose(ang)
         vert, joint = self.mano(beta, pose, rvec)
-        print('==================', rvec[0], '======================')
         faces = self.mano.F
+
+        #====================
+        min = np.inf
+        max = -np.inf
+        tmp_min = np.min(rvec)
+        tmp_max = np.max(rvec)
+        if tmp_min < min:
+            min = tmp_min
+        if tmp_max > max:
+            max = tmp_max
+
+        print("=================", min, max, "=====================")
+        #====================
 
         # Convert from m to mm
         vert *= 1000.0

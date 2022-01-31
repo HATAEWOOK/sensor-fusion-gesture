@@ -96,7 +96,7 @@ class LinearModel(nn.Module):
 if __name__ == '__main__':
     # Just to check network architecture
     device      = torch.device('cpu')
-    fc_layers   = [576+39, 288, 288, 39]
+    fc_layers   = [2048+39, 1024, 512, 39]
     use_dropout = [True, True, False]
     drop_prob   = [0.5, 0.5, 0]
     use_ac_func = [True, True, False]   
