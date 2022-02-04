@@ -210,8 +210,9 @@ class Mano2depth():
                 self.faces = faces
                 self.bs = verts.shape[0]
                 
-        def mesh2depth(self, vis, coms):
+        def mesh2depth(self, vis, coms, path = None):
                 depths = []
+                save_screen_image = True
                 for vert, com in zip(self.verts, coms):
                         mesh = o3d.geometry.TriangleMesh()
                         vert = vert.detach().cpu()
@@ -219,6 +220,9 @@ class Mano2depth():
                         mesh.triangles = o3d.utility.Vector3iVector(self.faces)
                         mesh.compute_vertex_normals()
                         vis.add_geometry(mesh)
+                        if path is not None and save_screen_image:
+                                vis.capture_screen_image(path, do_render = True)
+                                save_screen_image = False
                         depth = vis.capture_depth_float_buffer(True)
                         vis.clear_geometries()
                         depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth), np.asarray(com), preprocess = False)

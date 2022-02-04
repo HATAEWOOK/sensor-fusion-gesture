@@ -113,6 +113,8 @@ class MSRA_HT:
 
     def get_j3d(self, idx):
         j3d = self.jointlists[idx]
+        j3d = np.insert(j3d, 1, j3d[17:21], axis=0)
+        j3d = np.delete(j3d, slice(21,25), axis=0)
         return j3d
 
     def __len__(self):

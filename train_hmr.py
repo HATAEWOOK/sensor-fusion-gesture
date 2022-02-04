@@ -102,7 +102,7 @@ class Trainer:
                 )
 
         # loss
-        self.depth_criterion = torch.nn.SmoothL1Loss()
+        self.depth_criterion = torch.nn.SmoothL1Loss(beta=0.5)
         self.joint_criterion = torch.nn.MSELoss()
 
         # etc
@@ -218,8 +218,12 @@ class Trainer:
                 self.optimizer.zero_grad()
                 keypt, joint, vert, ang, faces, params = self.model(depth_image)
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
+                if (b_idx+1) % ckpt == 0:
+                    vis_path =  os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred_3d.png'%(self.start_epoch, b_idx+1))
+                else:
+                    vis_path = None
                 m2d = Mano2depth(vert, faces)
-                pred_depth = m2d.mesh2depth(self.vis, coms) #[bs, 224, 224]
+                pred_depth = m2d.mesh2depth(self.vis, coms, path = vis_path) #[bs, 224, 224]
                 depth_loss = self.depth_criterion(depth_image.squeeze(), pred_depth.to(self.device))
                 j3d_loss = self.joint_criterion(target_joint.squeeze(), joint.to(self.device))
                 loss = depth_loss*1e4 + j3d_loss
@@ -244,8 +248,10 @@ class Trainer:
                                 f'time: {term:.5f},', end = '\r'
                     )  
 
-                    pred = pred_depth[0]
-                    target = depth_image[0]
+                    pred = pred_depth[0].squeeze().cpu()
+                    target = depth_image[0].squeeze().cpu()
+                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred.txt'%(self.start_epoch, b_idx+1)), pred.numpy())
+                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_target.txt'%(self.start_epoch, b_idx+1)), target.numpy())
                     save_image(pred, os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred.png'%(self.start_epoch, b_idx+1)))
                     save_image(target, os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_target.png'%(self.start_epoch, b_idx+1)))
 
@@ -291,7 +297,7 @@ class Trainer:
                 self.cfg.best_model = os.path.join(best_model_dir, 'S%02d_%03d_net.pt' % (self.try_num, epoch_num))
                 self.save_model()
                 self.logger(f'Model saved! Try num : {self.try_num}, Epochs : {epoch_num}, Loss : {eval_avg_meter.avg}, Time : {datetime.now().replace(microsecond=0)}')
-                self.best_loss = eval_avg_meter.avg
+                best_loss = eval_avg_meter.avg
 
         endtime = datetime.now().replace(microsecond=0)
         self.logger('Finished Training at %s\n' % (datetime.strftime(endtime, '%Y-%m-%d_%H:%M:%S')))
@@ -305,8 +311,8 @@ if __name__ == "__main__":
         'manual_seed' : 24587,
         # 'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
         'ckp_dir' : './ckp',
-        'lr' : 1e-4,
-        'lr_decay_gamma' : 0.1,
+        'lr' : 1e-5,
+        'lr_decay_gamma' : 0.5,
         'lr_decay_step' : 10,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -322,7 +328,7 @@ if __name__ == "__main__":
         'num_workers' : 2, 
         'batch_size' : 20, 
         'ckpt_term' : 100, 
-        'n_epochs' : 200,
+        'n_epochs' : 50,
         'fitting' : True,
     }
 
