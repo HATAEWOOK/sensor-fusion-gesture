@@ -49,7 +49,7 @@ class Dataload(Dataset):
         JOINT_NUM = 21
         fx = fy = 241.42
         cx, cy = 160, 120
-        cube = [200,200,200]
+        cube = [180,180,180]
         self.dp = Data_preprocess(JOINT_NUM, fx, fy, cx, cy, cube)
 
     def __len__(self):
@@ -65,6 +65,7 @@ class Dataload(Dataset):
             sample['processed'] = self.totensor(depth_train).float()
             sample['com'] = torch.FloatTensor(com)
             sample['name'] = self.hand_dataset.get_filename(idx)
+            sample['j3d'] = self.totensor(self.hand_dataset.get_j3d(idx)).float()
         return sample
     
     def __getitem__(self, idx):
@@ -87,12 +88,19 @@ class MSRA_HT:
         
     def load_dataset(self):
         filenames = []
+        jointlists = np.empty([0,21,3])
         for i in range(1, self.SUBJECT+1):
             dir = os.listdir(os.path.join(self.base_path, 'Subject%d' % i))
             dir = [file for file in dir if file.endswith(".bin")]
             dir = [os.path.join(self.base_path, 'Subject%d' % i, file) for file in dir]
+
+            joint_path = os.path.join(self.base_path, 'Subject%d' % i, 'joint.txt')
+            jointlist = np.loadtxt(joint_path, dtype=float, delimiter=' ', skiprows=1)
+            jointlist = [joint.reshape([-1,3]) for joint in jointlist] #[400,21,3]
+            jointlists=np.append(jointlists, jointlist, axis=0)
             filenames.extend(dir)
         self.filenames = filenames
+        self.jointlists = jointlists
     
     def get_depth(self, idx):
         depth = np.fromfile(self.filenames[idx], dtype=np.float32)
@@ -104,12 +112,11 @@ class MSRA_HT:
         return name
 
     def get_j3d(self, idx):
-        pass
+        j3d = self.jointlists[idx]
+        return j3d
 
     def __len__(self):
         return len(self.filenames)
-
-
 
 if __name__ == '__main__':
     path = 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB'
@@ -120,18 +127,20 @@ if __name__ == '__main__':
         'MSRA_HT',
         path,
     )
+    print(len(tmp))
     train_size = int(0.8*len(tmp))
     test_size = len(tmp) - train_size
     train_da, test_da = torch.utils.data.random_split(tmp, [train_size, test_size])
     sample = next(iter(train_da))
-    print(sample['processed'].shape)
+    img = sample['processed'].squeeze()
+    plt.figure()
+    plt.imshow(img)
+    plt.show()
 
 
-    train_loader = torch.utils.data.DataLoader(train_da, batch_size=10,shuffle = True)
-    test_loader = torch.utils.data.DataLoader(test_da, batch_size=10,shuffle = True)
+    # train_loader = torch.utils.data.DataLoader(train_da, batch_size=10,shuffle = True)
+    # test_loader = torch.utils.data.DataLoader(test_da, batch_size=10,shuffle = True)
 
-    for idx, (sample) in enumerate(test_loader):
-        print(idx)
 
 
     # JOINT_NUM = 21

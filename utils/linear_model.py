@@ -75,6 +75,7 @@ class LinearModel(nn.Module):
             if _ < l_use_ac_func and self.use_ac_func[_]:
                 self.fc_blocks.add_module(
                     name = 'regressor_af_{}'.format(_),
+                    # module = nn.ReLU6()
                     module = nn.ReLU()
                 )
             

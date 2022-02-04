@@ -3,6 +3,7 @@ Network for hand rotation using mano hand model
 Input : RGB(? x ?) temp 224*224
 Output : rvec(3)
 """
+from cmath import nan
 import numpy as np
 import torch
 import torch.nn as nn
@@ -17,6 +18,7 @@ from utils.utils_mpi_model import MANO #temp
 import utils.utils_mobilenet_v3 as utils_mobilenet_v3 #tmep
 from utils.resnet import resnet152 
 from datasetloader.data_loader_RHD import data_load_rhd_clr
+from utils.train_utils import orthographic_proj_withz as proj
 
 
 
@@ -42,6 +44,7 @@ class Regressor(LinearModel):
         for _ in range(self.num_iters):
             total = torch.cat([inputs, param], dim=1)
             param = param + self.fc_blocks(total)
+            # param = self.fc_blocks(total)
             params.append(param)
 
         return params
@@ -58,8 +61,8 @@ class HMR(nn.Module):
 
         # Load encoder 
         # self.encoder = utils_mobilenet_v3.mobilenetv3_small() # MobileNetV3
-        self.encoder = resnet152() # ResNet-152
         # num_features = 576
+        self.encoder = resnet152() # ResNet-152
         num_features = 2048
         
         # Load iterative regressor
@@ -89,21 +92,9 @@ class HMR(nn.Module):
         ang   = param[:, 16:].contiguous()  # [bs,23] Angle parameters
 
         pose = self.mano.convert_ang_to_pose(ang)
+        rvec = (2*np.pi)*(rvec + 0.6) / (1.0 + 0.6) - np.pi   
         vert, joint = self.mano(beta, pose, rvec)
         faces = self.mano.F
-
-        #====================
-        min = np.inf
-        max = -np.inf
-        tmp_min = np.min(rvec)
-        tmp_max = np.max(rvec)
-        if tmp_min < min:
-            min = tmp_min
-        if tmp_max > max:
-            max = tmp_max
-
-        print("=================", min, max, "=====================")
-        #====================
 
         # Convert from m to mm
         vert *= 1000.0
@@ -123,7 +114,10 @@ class HMR(nn.Module):
         # if not self.stb_dataset:
         #     vert  = vert  - joint[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
         joint = joint - joint[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
-
+        if not torch.isfinite(torch.max(joint)):
+            print("infinite joint")
+            exit(1)
+            
         return keypt, joint, vert, ang, faces # [bs,21,2], [bs,21,3], [bs,778,3], [bs,23]
 
 
@@ -183,6 +177,7 @@ if __name__ == '__main__':
     image = torch.randn(bs,1,224,224)
     print(image.shape)
     keypt, joint, vert, ang, faces, params = model(image)
+    print(torch.max(joint))
 
     print('keypt', keypt.shape) # [bs,21,2]
     print('joint', joint.shape) # [bs,21,3]
