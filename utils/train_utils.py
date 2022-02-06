@@ -11,6 +11,8 @@ import logging
 import open3d as o3d
 import torch
 import matplotlib.pyplot as plt
+import os
+from datetime import datetime
 
 from utils.utils_mpi_model import MANO
 
@@ -26,7 +28,7 @@ class Data_preprocess():
                 self.rng = np.random.RandomState(23455)
 
         def preprocess_depth(self, depth_orig, com = None, preprocess = True):
-                depth_orig[depth_orig>500]=0
+                depth_orig[depth_orig>1000]=0
                 if com is None:
                         com = self.calculateCOM(depth_orig)
                 if preprocess:
@@ -183,15 +185,13 @@ def set_vis():
         fx = fy = 241.42
         cx = w / 2 - 0.5
         cy = h / 2 - 0.5
-        cube = [200,200,200]
+        cube = [180,180,180]
         vis = o3d.visualization.Visualizer()
         vis.create_window(visible = False, width = w, height = h)
         vc = vis.get_view_control()
         camera_param = vc.convert_to_pinhole_camera_parameters()
-        camera_param.intrinsic.set_intrinsics(w, h, fx, fy, w / 2 - 0.5,  h / 2 - 0.5)
+        camera_param.intrinsic.set_intrinsics(w, h, fx, fy, cx, cy)
         vc.convert_from_pinhole_camera_parameters(camera_param)
-        param = vc.convert_to_pinhole_camera_parameters().intrinsic.intrinsic_matrix
-        print("Rendering camera intrinsic parameters is fx : {}, fy : {}, cx : {}, cy : {}".format(param[0][0], param[1][1], param[0][2], param[1][2]))
 
         return vis
 
@@ -203,7 +203,7 @@ class Mano2depth():
                 self.fx = self.fy = 241.42
                 self.cx = self.w / 2 - 0.5
                 self.cy = self.h / 2 - 0.5
-                self.cube = [200,200,200]
+                self.cube = [180,180,180]
                 self.dp = Data_preprocess(21, self.fx, self.fy, self.cx, self.cy, self.cube)
 
                 self.verts = verts
@@ -222,10 +222,12 @@ class Mano2depth():
                         vis.add_geometry(mesh)
                         if path is not None and save_screen_image:
                                 vis.capture_screen_image(path, do_render = True)
+                                vis.capture_depth_image(os.path.join('D:/sfGesture/depth', '001.png'), do_render = True)
                                 save_screen_image = False
                         depth = vis.capture_depth_float_buffer(True)
                         vis.clear_geometries()
-                        depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth), np.asarray(com), preprocess = False)
+                        # depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth), np.asarray(com), preprocess = False)
+                        depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth))
                         depths.append(depth_train)
 
                 if len(depths) != self.bs: return print("Error in mesh2depth")

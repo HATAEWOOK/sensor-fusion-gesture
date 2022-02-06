@@ -109,6 +109,8 @@ class Trainer:
         self.cfg = cfg
         self.vis = set_vis()
         self.start_epoch = 0
+        self.minx = self.miny = self.minz = np.inf
+        self.maxx = self.maxy = self.maxz = -np.inf
 
     def save_model(self):
         torch.save(self.model.module.state_dict() if isinstance(self.model, torch.nn.DataParallel) 
@@ -169,17 +171,25 @@ class Trainer:
             target_joint = sample['j3d'].to(self.device) #[bs,1,21,3]
             self.optimizer.zero_grad()
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
+            # target_joint[:,:,:,2] += 350
+            # vert *= -1
+            # joint *= -1
             # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
-
+            #[bs,21,3] * [bs]
+            # joint *= params[:,0].unsqueeze(1).unsqueeze(2)*10
+            # vert *= params[:,0].unsqueeze(1).unsqueeze(2)*10
             m2d = Mano2depth(vert, faces)
             pred_depth = m2d.mesh2depth(self.vis, coms) #[bs, 224, 224]
             depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
             j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
-            loss = depth_loss * 1e4 + j3d_loss
+            j2d_loss = self.joint_criterion(keypt.to(self.device), target_joint.squeeze()[:,:,0:2])
+            loss = depth_loss + j3d_loss*1e-3 + j2d_loss*1e-3
+            # loss = j3d_loss
             # loss = depth_loss
             train_loss_dict = {
                 'depth_loss':depth_loss,
                 'j3d_loss':j3d_loss,
+                'j2d_loss':j2d_loss,
                 'total_loss':loss,
             }
             loss.requires_grad_(True)
@@ -198,6 +208,17 @@ class Trainer:
                             f'time: {term:.5f},', end = '\r'
                 )
 
+                
+                # #==========================
+                print("=========================================")
+                print("pred:",joint[0][1:5])
+                print("target:",target_joint.squeeze()[0][1:5])
+                print(params[0][0])
+                print(torch.tanh(params[0][3:6])*np.pi)
+                print(faces[0])
+                print("=========================================")
+                # #==========================
+
             self.optimizer.step()
 
         return avg_meter, train_loss_dict
@@ -215,22 +236,33 @@ class Trainer:
                 depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
                 coms = sample['com']
                 target_joint = sample['j3d'].to(self.device) #[bs,1,21,3]
-                self.optimizer.zero_grad()
                 keypt, joint, vert, ang, faces, params = self.model(depth_image)
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
+                # target_joint[:,:,:,2] += 350
+                # vert *= -1
+                # joint *= -1
+                # joint *= params[:,0].unsqueeze(1).unsqueeze(2)
+                # vert *= params[:,0].unsqueeze(1).unsqueeze(2)
                 if (b_idx+1) % ckpt == 0:
                     vis_path =  os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred_3d.png'%(self.start_epoch, b_idx+1))
                 else:
                     vis_path = None
+                #==========
+                # joint[:,:,2] *= 10
+                # vert *= 100
+                #==========
                 m2d = Mano2depth(vert, faces)
                 pred_depth = m2d.mesh2depth(self.vis, coms, path = vis_path) #[bs, 224, 224]
-                depth_loss = self.depth_criterion(depth_image.squeeze(), pred_depth.to(self.device))
-                j3d_loss = self.joint_criterion(target_joint.squeeze(), joint.to(self.device))
-                loss = depth_loss*1e4 + j3d_loss
+                depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
+                j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
+                j2d_loss = self.joint_criterion(keypt.to(self.device), target_joint.squeeze()[:,:,0:2])
+                loss = depth_loss + j3d_loss*1e-3 + j2d_loss*1e-3
+                # loss = j3d_loss
                 # loss = depth_loss
                 eval_loss_dict = {
                     'depth_loss':depth_loss,
                     'j3d_loss':j3d_loss,
+                    'j2d_loss':j2d_loss,
                     'total_loss':loss,
                 }
                 loss.requires_grad_(True)
@@ -250,6 +282,12 @@ class Trainer:
 
                     pred = pred_depth[0].squeeze().cpu()
                     target = depth_image[0].squeeze().cpu()
+                    pred_joint = joint[0].squeeze().cpu()
+                    pred_vert = vert[0].squeeze().cpu()
+                    pred_faces = faces
+                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_joint.txt'%(self.start_epoch, b_idx+1)), pred_joint.numpy())
+                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_vert.txt'%(self.start_epoch, b_idx+1)), pred_vert.numpy())
+                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_faces.txt'%(self.start_epoch, b_idx+1)), pred_faces)
                     np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred.txt'%(self.start_epoch, b_idx+1)), pred.numpy())
                     np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_target.txt'%(self.start_epoch, b_idx+1)), target.numpy())
                     save_image(pred, os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred.png'%(self.start_epoch, b_idx+1)))
@@ -275,11 +313,11 @@ class Trainer:
             train_avg_meter, train_loss_dict = self.train()
 
             print("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
-            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, total_loss : %.5f" % (train_loss_dict['depth_loss'],train_loss_dict['j3d_loss'], train_loss_dict['total_loss']))
+            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, total_loss : %.5f" % (train_loss_dict['depth_loss'],train_loss_dict['j3d_loss']*1e-3, train_loss_dict['j2d_loss']*1e-3, train_loss_dict['total_loss']))
             
             eval_avg_meter, eval_loss_dict = self.eval()
             print("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
-            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, total_loss : %.5f" % (eval_loss_dict['depth_loss'],eval_loss_dict['j3d_loss'], eval_loss_dict['total_loss']))
+            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, total_loss : %.5f" % (eval_loss_dict['depth_loss'],eval_loss_dict['j3d_loss']*1e-3, eval_loss_dict['j2d_loss']*1e-3, eval_loss_dict['total_loss']))
 
             if self.cfg.fitting: 
                 if self.cfg.lr_decay_gamma:
@@ -310,8 +348,8 @@ if __name__ == "__main__":
     config = {
         'manual_seed' : 24587,
         # 'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
-        'ckp_dir' : './ckp',
-        'lr' : 1e-5,
+        'ckp_dir' : 'D:/sfGesture/ckp',
+        'lr' : 1e-4,
         'lr_decay_gamma' : 0.5,
         'lr_decay_step' : 10,
         'expr_ID' : 'test1',

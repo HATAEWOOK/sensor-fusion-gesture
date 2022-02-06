@@ -248,8 +248,8 @@ class MANO(nn.Module):
 
         if tvec is not None:
             # Finally apply global translation
-            vertices += tvec.unsqueeze(dim=1)
-            joints += tvec.unsqueeze(dim=1)
+            vertices += tvec.unsqueeze(1)
+            joints += tvec.unsqueeze(1)
 
         return vertices, joints
 

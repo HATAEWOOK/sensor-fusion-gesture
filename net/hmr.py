@@ -92,7 +92,7 @@ class HMR(nn.Module):
         ang   = param[:, 16:].contiguous()  # [bs,23] Angle parameters
 
         pose = self.mano.convert_ang_to_pose(ang)
-        rvec = (2*np.pi)*(rvec + 0.6) / (1.0 + 0.6) - np.pi   
+        rvec = torch.tanh(rvec)*np.pi
         vert, joint = self.mano(beta, pose, rvec)
         faces = self.mano.F
 
@@ -113,10 +113,7 @@ class HMR(nn.Module):
         # if self.stb_dataset: # For publication to generate images for STB dataset
         # if not self.stb_dataset:
         #     vert  = vert  - joint[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
-        joint = joint - joint[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
-        if not torch.isfinite(torch.max(joint)):
-            print("infinite joint")
-            exit(1)
+        # joint = joint - joint[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
             
         return keypt, joint, vert, ang, faces # [bs,21,2], [bs,21,3], [bs,778,3], [bs,23]
 

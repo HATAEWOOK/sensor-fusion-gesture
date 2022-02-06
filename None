@@ -1,6 +1,336 @@
-2022-02-04 17:05:54,068 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-02-04 17:05:54
-2022-02-04 17:05:54,069 - root - INFO - tensorboard --logdir=./ckp\summaries
-2022-02-04 17:05:54,069 - root - INFO - Torch Version: 1.10.1
+2022-02-06 18:05:35,768 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-02-06 18:05:35
+2022-02-06 18:05:35,769 - root - INFO - tensorboard --logdir=D:/sfGesture/ckp\summaries
+2022-02-06 18:05:35,770 - root - INFO - Torch Version: 1.10.1
 
-2022-02-04 17:05:54,069 - root - INFO - Base dataset_dir is D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB
-2022-02-04 17:05:54,111 - root - INFO - Using 1 CUDA cores [NVIDIA GeForce RTX 3080] for training!
+2022-02-06 18:05:35,770 - root - INFO - Base dataset_dir is D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB
+2022-02-06 18:05:35,799 - root - INFO - Using 1 CUDA cores [NVIDIA GeForce RTX 3080] for training!
+2022-02-06 18:05:36,664 - root - INFO - Started training at 2022-02-06_18:05:36 for 50 epochs
+2022-02-06 18:05:36,664 - root - INFO - ===== starting Epoch # 001
+2022-02-06 18:05:53,171 - root - INFO - Step : 10/96
+2022-02-06 18:05:53,171 - root - INFO - Train loss : 37.05275
+2022-02-06 18:05:53,172 - root - INFO - time : 16.50429
+2022-02-06 18:05:58,596 - root - INFO - Step : 20/96
+2022-02-06 18:05:58,596 - root - INFO - Train loss : 31.26503
+2022-02-06 18:05:58,597 - root - INFO - time : 21.92833
+2022-02-06 18:06:03,966 - root - INFO - Step : 30/96
+2022-02-06 18:06:03,966 - root - INFO - Train loss : 29.14669
+2022-02-06 18:06:03,967 - root - INFO - time : 27.29843
+2022-02-06 18:06:09,367 - root - INFO - Step : 40/96
+2022-02-06 18:06:09,367 - root - INFO - Train loss : 27.79386
+2022-02-06 18:06:09,368 - root - INFO - time : 32.69996
+2022-02-06 18:06:14,755 - root - INFO - Step : 50/96
+2022-02-06 18:06:14,756 - root - INFO - Train loss : 26.70804
+2022-02-06 18:06:14,757 - root - INFO - time : 38.08787
+2022-02-06 18:06:20,126 - root - INFO - Step : 60/96
+2022-02-06 18:06:20,126 - root - INFO - Train loss : 25.97366
+2022-02-06 18:06:20,127 - root - INFO - time : 43.45930
+2022-02-06 18:06:25,499 - root - INFO - Step : 70/96
+2022-02-06 18:06:25,499 - root - INFO - Train loss : 25.46276
+2022-02-06 18:06:25,500 - root - INFO - time : 48.83214
+2022-02-06 18:06:30,869 - root - INFO - Step : 80/96
+2022-02-06 18:06:30,869 - root - INFO - Train loss : 25.06165
+2022-02-06 18:06:30,870 - root - INFO - time : 54.20190
+2022-02-06 18:06:36,276 - root - INFO - Step : 90/96
+2022-02-06 18:06:36,276 - root - INFO - Train loss : 24.63793
+2022-02-06 18:06:36,277 - root - INFO - time : 59.60911
+2022-02-06 18:06:50,019 - root - INFO - Step : 10/24
+2022-02-06 18:06:50,019 - root - INFO - Evaluation loss : 21.65020
+2022-02-06 18:06:50,020 - root - INFO - time : 10.17467
+2022-02-06 18:06:54,707 - root - INFO - Step : 20/24
+2022-02-06 18:06:54,707 - root - INFO - Evaluation loss : 20.99776
+2022-02-06 18:06:54,709 - root - INFO - time : 14.86104
+2022-02-06 18:06:56,940 - root - INFO - ====== Learning rate changed! inf -> 1.00e-04 ======
+2022-02-06 18:06:57,369 - root - INFO - Model saved! Try num : 0, Epochs : 1, Loss : 21.170847018559773, Time : 2022-02-06 18:06:57
+2022-02-06 18:06:57,370 - root - INFO - ===== starting Epoch # 002
+2022-02-06 18:07:08,951 - root - INFO - Step : 10/96
+2022-02-06 18:07:08,951 - root - INFO - Train loss : 20.34223
+2022-02-06 18:07:08,952 - root - INFO - time : 11.57960
+2022-02-06 18:07:14,356 - root - INFO - Step : 20/96
+2022-02-06 18:07:14,356 - root - INFO - Train loss : 20.22778
+2022-02-06 18:07:14,357 - root - INFO - time : 16.98468
+2022-02-06 18:07:19,746 - root - INFO - Step : 30/96
+2022-02-06 18:07:19,746 - root - INFO - Train loss : 20.83758
+2022-02-06 18:07:19,748 - root - INFO - time : 22.37420
+2022-02-06 18:07:25,131 - root - INFO - Step : 40/96
+2022-02-06 18:07:25,132 - root - INFO - Train loss : 21.01788
+2022-02-06 18:07:25,133 - root - INFO - time : 27.75924
+2022-02-06 18:07:30,563 - root - INFO - Step : 50/96
+2022-02-06 18:07:30,564 - root - INFO - Train loss : 20.80872
+2022-02-06 18:07:30,566 - root - INFO - time : 33.19181
+2022-02-06 18:07:36,007 - root - INFO - Step : 60/96
+2022-02-06 18:07:36,007 - root - INFO - Train loss : 20.71280
+2022-02-06 18:07:36,007 - root - INFO - time : 38.63569
+2022-02-06 18:07:41,395 - root - INFO - Step : 70/96
+2022-02-06 18:07:41,395 - root - INFO - Train loss : 20.53801
+2022-02-06 18:07:41,396 - root - INFO - time : 44.02361
+2022-02-06 18:07:46,751 - root - INFO - Step : 80/96
+2022-02-06 18:07:46,752 - root - INFO - Train loss : 20.39353
+2022-02-06 18:07:46,753 - root - INFO - time : 49.37980
+2022-02-06 18:07:52,154 - root - INFO - Step : 90/96
+2022-02-06 18:07:52,154 - root - INFO - Train loss : 20.23987
+2022-02-06 18:07:52,155 - root - INFO - time : 54.78239
+2022-02-06 18:08:06,418 - root - INFO - Step : 10/24
+2022-02-06 18:08:06,418 - root - INFO - Evaluation loss : 18.55536
+2022-02-06 18:08:06,419 - root - INFO - time : 10.40564
+2022-02-06 18:08:11,054 - root - INFO - Step : 20/24
+2022-02-06 18:08:11,054 - root - INFO - Evaluation loss : 17.99181
+2022-02-06 18:08:11,055 - root - INFO - time : 15.04164
+2022-02-06 18:08:13,891 - root - INFO - Model saved! Try num : 0, Epochs : 2, Loss : 17.891332348187763, Time : 2022-02-06 18:08:13
+2022-02-06 18:08:13,892 - root - INFO - ===== starting Epoch # 003
+2022-02-06 18:08:26,083 - root - INFO - Step : 10/96
+2022-02-06 18:08:26,083 - root - INFO - Train loss : 19.25652
+2022-02-06 18:08:26,083 - root - INFO - time : 12.18856
+2022-02-06 18:08:31,524 - root - INFO - Step : 20/96
+2022-02-06 18:08:31,524 - root - INFO - Train loss : 18.93799
+2022-02-06 18:08:31,525 - root - INFO - time : 17.63035
+2022-02-06 18:08:36,942 - root - INFO - Step : 30/96
+2022-02-06 18:08:36,942 - root - INFO - Train loss : 19.08926
+2022-02-06 18:08:36,943 - root - INFO - time : 23.04826
+2022-02-06 18:08:42,497 - root - INFO - Step : 40/96
+2022-02-06 18:08:42,497 - root - INFO - Train loss : 18.88534
+2022-02-06 18:08:42,498 - root - INFO - time : 28.60189
+2022-02-06 18:08:47,870 - root - INFO - Step : 50/96
+2022-02-06 18:08:47,870 - root - INFO - Train loss : 18.82928
+2022-02-06 18:08:47,872 - root - INFO - time : 33.97616
+2022-02-06 18:08:53,455 - root - INFO - Step : 60/96
+2022-02-06 18:08:53,456 - root - INFO - Train loss : 18.53410
+2022-02-06 18:08:53,458 - root - INFO - time : 39.56120
+2022-02-06 18:08:58,994 - root - INFO - Step : 70/96
+2022-02-06 18:08:58,994 - root - INFO - Train loss : 18.51926
+2022-02-06 18:08:58,995 - root - INFO - time : 45.10028
+2022-02-06 18:09:04,615 - root - INFO - Step : 80/96
+2022-02-06 18:09:04,615 - root - INFO - Train loss : 18.37467
+2022-02-06 18:09:04,616 - root - INFO - time : 50.72153
+2022-02-06 18:09:10,052 - root - INFO - Step : 90/96
+2022-02-06 18:09:10,053 - root - INFO - Train loss : 18.33196
+2022-02-06 18:09:10,054 - root - INFO - time : 56.15849
+2022-02-06 18:09:24,536 - root - INFO - Step : 10/24
+2022-02-06 18:09:24,537 - root - INFO - Evaluation loss : 16.88932
+2022-02-06 18:09:24,537 - root - INFO - time : 10.82180
+2022-02-06 18:09:29,486 - root - INFO - Step : 20/24
+2022-02-06 18:09:29,486 - root - INFO - Evaluation loss : 17.05552
+2022-02-06 18:09:29,487 - root - INFO - time : 15.77264
+2022-02-06 18:09:32,335 - root - INFO - Model saved! Try num : 0, Epochs : 3, Loss : 17.297412713368733, Time : 2022-02-06 18:09:32
+2022-02-06 18:09:32,335 - root - INFO - ===== starting Epoch # 004
+2022-02-06 18:09:44,433 - root - INFO - Step : 10/96
+2022-02-06 18:09:44,433 - root - INFO - Train loss : 17.25764
+2022-02-06 18:09:44,434 - root - INFO - time : 12.09605
+2022-02-06 18:09:49,953 - root - INFO - Step : 20/96
+2022-02-06 18:09:49,954 - root - INFO - Train loss : 17.70237
+2022-02-06 18:09:49,954 - root - INFO - time : 17.61602
+2022-02-06 18:09:55,642 - root - INFO - Step : 30/96
+2022-02-06 18:09:55,642 - root - INFO - Train loss : 17.51620
+2022-02-06 18:09:55,643 - root - INFO - time : 23.30493
+2022-02-06 18:10:01,062 - root - INFO - Step : 40/96
+2022-02-06 18:10:01,063 - root - INFO - Train loss : 17.44973
+2022-02-06 18:10:01,063 - root - INFO - time : 28.72526
+2022-02-06 18:10:06,454 - root - INFO - Step : 50/96
+2022-02-06 18:10:06,454 - root - INFO - Train loss : 17.51466
+2022-02-06 18:10:06,455 - root - INFO - time : 34.11683
+2022-02-06 18:10:11,976 - root - INFO - Step : 60/96
+2022-02-06 18:10:11,977 - root - INFO - Train loss : 17.38102
+2022-02-06 18:10:11,977 - root - INFO - time : 39.63935
+2022-02-06 18:10:17,460 - root - INFO - Step : 70/96
+2022-02-06 18:10:17,460 - root - INFO - Train loss : 17.32455
+2022-02-06 18:10:17,460 - root - INFO - time : 45.12258
+2022-02-06 18:10:22,914 - root - INFO - Step : 80/96
+2022-02-06 18:10:22,915 - root - INFO - Train loss : 17.28587
+2022-02-06 18:10:22,915 - root - INFO - time : 50.57704
+2022-02-06 18:10:28,398 - root - INFO - Step : 90/96
+2022-02-06 18:10:28,399 - root - INFO - Train loss : 17.28260
+2022-02-06 18:10:28,399 - root - INFO - time : 56.06148
+2022-02-06 18:10:42,330 - root - INFO - Step : 10/24
+2022-02-06 18:10:42,331 - root - INFO - Evaluation loss : 16.09528
+2022-02-06 18:10:42,331 - root - INFO - time : 10.30447
+2022-02-06 18:10:47,105 - root - INFO - Step : 20/24
+2022-02-06 18:10:47,106 - root - INFO - Evaluation loss : 16.14475
+2022-02-06 18:10:47,107 - root - INFO - time : 15.07987
+2022-02-06 18:10:49,812 - root - INFO - Model saved! Try num : 0, Epochs : 4, Loss : 16.240227580070496, Time : 2022-02-06 18:10:49
+2022-02-06 18:10:49,812 - root - INFO - ===== starting Epoch # 005
+2022-02-06 18:11:01,503 - root - INFO - Step : 10/96
+2022-02-06 18:11:01,504 - root - INFO - Train loss : 17.05023
+2022-02-06 18:11:01,504 - root - INFO - time : 11.68998
+2022-02-06 18:11:07,178 - root - INFO - Step : 20/96
+2022-02-06 18:11:07,178 - root - INFO - Train loss : 16.84342
+2022-02-06 18:11:07,179 - root - INFO - time : 17.36418
+2022-02-06 18:11:12,746 - root - INFO - Step : 30/96
+2022-02-06 18:11:12,746 - root - INFO - Train loss : 17.02355
+2022-02-06 18:11:12,746 - root - INFO - time : 22.93172
+2022-02-06 18:11:18,131 - root - INFO - Step : 40/96
+2022-02-06 18:11:18,131 - root - INFO - Train loss : 16.96255
+2022-02-06 18:11:18,132 - root - INFO - time : 28.31787
+2022-02-06 18:11:23,721 - root - INFO - Step : 50/96
+2022-02-06 18:11:23,721 - root - INFO - Train loss : 16.76656
+2022-02-06 18:11:23,721 - root - INFO - time : 33.90676
+2022-02-06 18:11:29,421 - root - INFO - Step : 60/96
+2022-02-06 18:11:29,422 - root - INFO - Train loss : 16.61609
+2022-02-06 18:11:29,422 - root - INFO - time : 39.60768
+2022-02-06 18:11:34,913 - root - INFO - Step : 70/96
+2022-02-06 18:11:34,913 - root - INFO - Train loss : 16.51807
+2022-02-06 18:11:34,914 - root - INFO - time : 45.09926
+2022-02-06 18:11:40,449 - root - INFO - Step : 80/96
+2022-02-06 18:11:40,449 - root - INFO - Train loss : 16.48452
+2022-02-06 18:11:40,450 - root - INFO - time : 50.63595
+2022-02-06 18:11:46,101 - root - INFO - Step : 90/96
+2022-02-06 18:11:46,101 - root - INFO - Train loss : 16.43344
+2022-02-06 18:11:46,102 - root - INFO - time : 56.28707
+2022-02-06 18:12:00,529 - root - INFO - Step : 10/24
+2022-02-06 18:12:00,529 - root - INFO - Evaluation loss : 15.28051
+2022-02-06 18:12:00,530 - root - INFO - time : 10.67337
+2022-02-06 18:12:05,034 - root - INFO - Step : 20/24
+2022-02-06 18:12:05,034 - root - INFO - Evaluation loss : 15.30922
+2022-02-06 18:12:05,035 - root - INFO - time : 15.17750
+2022-02-06 18:12:07,759 - root - INFO - Model saved! Try num : 0, Epochs : 5, Loss : 15.369655966758728, Time : 2022-02-06 18:12:07
+2022-02-06 18:12:07,759 - root - INFO - ===== starting Epoch # 006
+2022-02-06 18:12:19,697 - root - INFO - Step : 10/96
+2022-02-06 18:12:19,697 - root - INFO - Train loss : 16.37471
+2022-02-06 18:12:19,697 - root - INFO - time : 11.93407
+2022-02-06 18:12:25,116 - root - INFO - Step : 20/96
+2022-02-06 18:12:25,116 - root - INFO - Train loss : 16.20661
+2022-02-06 18:12:25,117 - root - INFO - time : 17.35423
+2022-02-06 18:12:30,504 - root - INFO - Step : 30/96
+2022-02-06 18:12:30,505 - root - INFO - Train loss : 16.09711
+2022-02-06 18:12:30,505 - root - INFO - time : 22.74198
+2022-02-06 18:12:35,976 - root - INFO - Step : 40/96
+2022-02-06 18:12:35,977 - root - INFO - Train loss : 15.93578
+2022-02-06 18:12:35,977 - root - INFO - time : 28.21368
+2022-02-06 18:12:41,469 - root - INFO - Step : 50/96
+2022-02-06 18:12:41,469 - root - INFO - Train loss : 15.91191
+2022-02-06 18:12:41,470 - root - INFO - time : 33.70704
+2022-02-06 18:12:47,136 - root - INFO - Step : 60/96
+2022-02-06 18:12:47,137 - root - INFO - Train loss : 15.88566
+2022-02-06 18:12:47,138 - root - INFO - time : 39.37430
+2022-02-06 18:12:52,591 - root - INFO - Step : 70/96
+2022-02-06 18:12:52,591 - root - INFO - Train loss : 15.85017
+2022-02-06 18:12:52,592 - root - INFO - time : 44.82850
+2022-02-06 18:12:57,998 - root - INFO - Step : 80/96
+2022-02-06 18:12:57,999 - root - INFO - Train loss : 15.82934
+2022-02-06 18:12:57,999 - root - INFO - time : 50.23582
+2022-02-06 18:13:03,516 - root - INFO - Step : 90/96
+2022-02-06 18:13:03,516 - root - INFO - Train loss : 15.82490
+2022-02-06 18:13:03,517 - root - INFO - time : 55.75368
+2022-02-06 18:13:17,615 - root - INFO - Step : 10/24
+2022-02-06 18:13:17,615 - root - INFO - Evaluation loss : 15.20392
+2022-02-06 18:13:17,616 - root - INFO - time : 10.42694
+2022-02-06 18:13:22,114 - root - INFO - Step : 20/24
+2022-02-06 18:13:22,115 - root - INFO - Evaluation loss : 15.19240
+2022-02-06 18:13:22,116 - root - INFO - time : 14.92637
+2022-02-06 18:13:25,200 - root - INFO - Model saved! Try num : 0, Epochs : 6, Loss : 15.200215975443522, Time : 2022-02-06 18:13:25
+2022-02-06 18:13:25,200 - root - INFO - ===== starting Epoch # 007
+2022-02-06 18:13:37,360 - root - INFO - Step : 10/96
+2022-02-06 18:13:37,361 - root - INFO - Train loss : 15.25835
+2022-02-06 18:13:37,362 - root - INFO - time : 12.15555
+2022-02-06 18:13:42,805 - root - INFO - Step : 20/96
+2022-02-06 18:13:42,805 - root - INFO - Train loss : 15.20729
+2022-02-06 18:13:42,806 - root - INFO - time : 17.60072
+2022-02-06 18:13:48,282 - root - INFO - Step : 30/96
+2022-02-06 18:13:48,282 - root - INFO - Train loss : 15.27976
+2022-02-06 18:13:48,283 - root - INFO - time : 23.07780
+2022-02-06 18:13:53,711 - root - INFO - Step : 40/96
+2022-02-06 18:13:53,711 - root - INFO - Train loss : 15.38849
+2022-02-06 18:13:53,712 - root - INFO - time : 28.50720
+2022-02-06 18:13:59,163 - root - INFO - Step : 50/96
+2022-02-06 18:13:59,163 - root - INFO - Train loss : 15.38215
+2022-02-06 18:13:59,164 - root - INFO - time : 33.95910
+2022-02-06 18:14:04,592 - root - INFO - Step : 60/96
+2022-02-06 18:14:04,592 - root - INFO - Train loss : 15.31394
+2022-02-06 18:14:04,593 - root - INFO - time : 39.38809
+2022-02-06 18:14:09,954 - root - INFO - Step : 70/96
+2022-02-06 18:14:09,955 - root - INFO - Train loss : 15.26337
+2022-02-06 18:14:09,955 - root - INFO - time : 44.75006
+2022-02-06 18:14:15,342 - root - INFO - Step : 80/96
+2022-02-06 18:14:15,343 - root - INFO - Train loss : 15.29483
+2022-02-06 18:14:15,344 - root - INFO - time : 50.13792
+2022-02-06 18:14:20,680 - root - INFO - Step : 90/96
+2022-02-06 18:14:20,680 - root - INFO - Train loss : 15.23248
+2022-02-06 18:14:20,681 - root - INFO - time : 55.47620
+2022-02-06 18:14:34,625 - root - INFO - Step : 10/24
+2022-02-06 18:14:34,626 - root - INFO - Evaluation loss : 14.94923
+2022-02-06 18:14:34,626 - root - INFO - time : 10.36006
+2022-02-06 18:14:39,162 - root - INFO - Step : 20/24
+2022-02-06 18:14:39,163 - root - INFO - Evaluation loss : 15.02798
+2022-02-06 18:14:39,163 - root - INFO - time : 14.89726
+2022-02-06 18:14:41,835 - root - INFO - Model saved! Try num : 0, Epochs : 7, Loss : 15.077177166938782, Time : 2022-02-06 18:14:41
+2022-02-06 18:14:41,835 - root - INFO - ===== starting Epoch # 008
+2022-02-06 18:14:53,875 - root - INFO - Step : 10/96
+2022-02-06 18:14:53,875 - root - INFO - Train loss : 14.35982
+2022-02-06 18:14:53,876 - root - INFO - time : 12.03750
+2022-02-06 18:14:59,230 - root - INFO - Step : 20/96
+2022-02-06 18:14:59,231 - root - INFO - Train loss : 14.70528
+2022-02-06 18:14:59,231 - root - INFO - time : 17.39269
+2022-02-06 18:15:04,634 - root - INFO - Step : 30/96
+2022-02-06 18:15:04,635 - root - INFO - Train loss : 14.72851
+2022-02-06 18:15:04,635 - root - INFO - time : 22.79694
+2022-02-06 18:15:09,988 - root - INFO - Step : 40/96
+2022-02-06 18:15:09,988 - root - INFO - Train loss : 14.75870
+2022-02-06 18:15:09,989 - root - INFO - time : 28.15116
+2022-02-06 18:15:15,359 - root - INFO - Step : 50/96
+2022-02-06 18:15:15,360 - root - INFO - Train loss : 14.87697
+2022-02-06 18:15:15,360 - root - INFO - time : 33.52230
+2022-02-06 18:15:20,747 - root - INFO - Step : 60/96
+2022-02-06 18:15:20,748 - root - INFO - Train loss : 14.88052
+2022-02-06 18:15:20,748 - root - INFO - time : 38.90981
+2022-02-06 18:15:26,102 - root - INFO - Step : 70/96
+2022-02-06 18:15:26,102 - root - INFO - Train loss : 14.83057
+2022-02-06 18:15:26,103 - root - INFO - time : 44.26487
+2022-02-06 18:15:31,524 - root - INFO - Step : 80/96
+2022-02-06 18:15:31,525 - root - INFO - Train loss : 14.78693
+2022-02-06 18:15:31,525 - root - INFO - time : 49.68654
+2022-02-06 18:15:36,928 - root - INFO - Step : 90/96
+2022-02-06 18:15:36,928 - root - INFO - Train loss : 14.76995
+2022-02-06 18:15:36,929 - root - INFO - time : 55.09053
+2022-02-06 18:15:51,091 - root - INFO - Step : 10/24
+2022-02-06 18:15:51,091 - root - INFO - Evaluation loss : 14.46038
+2022-02-06 18:15:51,092 - root - INFO - time : 10.52187
+2022-02-06 18:15:55,813 - root - INFO - Step : 20/24
+2022-02-06 18:15:55,813 - root - INFO - Evaluation loss : 14.47157
+2022-02-06 18:15:55,814 - root - INFO - time : 15.24416
+2022-02-06 18:15:58,744 - root - INFO - Model saved! Try num : 0, Epochs : 8, Loss : 14.45447846253713, Time : 2022-02-06 18:15:58
+2022-02-06 18:15:58,744 - root - INFO - ===== starting Epoch # 009
+2022-02-06 18:16:10,703 - root - INFO - Step : 10/96
+2022-02-06 18:16:10,703 - root - INFO - Train loss : 14.28934
+2022-02-06 18:16:10,704 - root - INFO - time : 11.95619
+2022-02-06 18:16:16,201 - root - INFO - Step : 20/96
+2022-02-06 18:16:16,201 - root - INFO - Train loss : 14.04616
+2022-02-06 18:16:16,202 - root - INFO - time : 17.45431
+2022-02-06 18:16:21,749 - root - INFO - Step : 30/96
+2022-02-06 18:16:21,749 - root - INFO - Train loss : 14.16293
+2022-02-06 18:16:21,749 - root - INFO - time : 23.00259
+2022-02-06 18:16:27,186 - root - INFO - Step : 40/96
+2022-02-06 18:16:27,187 - root - INFO - Train loss : 14.25354
+2022-02-06 18:16:27,187 - root - INFO - time : 28.43931
+2022-02-06 18:16:32,612 - root - INFO - Step : 50/96
+2022-02-06 18:16:32,612 - root - INFO - Train loss : 14.36122
+2022-02-06 18:16:32,613 - root - INFO - time : 33.86545
+2022-02-06 18:16:37,981 - root - INFO - Step : 60/96
+2022-02-06 18:16:37,982 - root - INFO - Train loss : 14.28095
+2022-02-06 18:16:37,982 - root - INFO - time : 39.23484
+2022-02-06 18:16:43,656 - root - INFO - Step : 70/96
+2022-02-06 18:16:43,657 - root - INFO - Train loss : 14.15024
+2022-02-06 18:16:43,658 - root - INFO - time : 44.90951
+2022-02-06 18:16:49,054 - root - INFO - Step : 80/96
+2022-02-06 18:16:49,055 - root - INFO - Train loss : 14.07780
+2022-02-06 18:16:49,055 - root - INFO - time : 50.30777
+2022-02-06 18:16:54,459 - root - INFO - Step : 90/96
+2022-02-06 18:16:54,459 - root - INFO - Train loss : 14.03024
+2022-02-06 18:16:54,460 - root - INFO - time : 55.71276
+2022-02-06 18:17:08,922 - root - INFO - Step : 10/24
+2022-02-06 18:17:08,922 - root - INFO - Evaluation loss : 14.16410
+2022-02-06 18:17:08,923 - root - INFO - time : 10.83986
+2022-02-06 18:17:13,475 - root - INFO - Step : 20/24
+2022-02-06 18:17:13,475 - root - INFO - Evaluation loss : 14.22241
+2022-02-06 18:17:13,476 - root - INFO - time : 15.39334
+2022-02-06 18:17:16,196 - root - INFO - Model saved! Try num : 0, Epochs : 9, Loss : 14.270025968551636, Time : 2022-02-06 18:17:16
+2022-02-06 18:17:16,196 - root - INFO - ===== starting Epoch # 010
+2022-02-06 18:17:27,848 - root - INFO - Step : 10/96
+2022-02-06 18:17:27,848 - root - INFO - Train loss : 13.69055
+2022-02-06 18:17:27,849 - root - INFO - time : 11.64951
+2022-02-06 18:17:33,312 - root - INFO - Step : 20/96
+2022-02-06 18:17:33,312 - root - INFO - Train loss : 13.84208
+2022-02-06 18:17:33,313 - root - INFO - time : 17.11325
+2022-02-06 18:17:38,769 - root - INFO - Step : 30/96
+2022-02-06 18:17:38,770 - root - INFO - Train loss : 13.61187
+2022-02-06 18:17:38,771 - root - INFO - time : 22.57003
+2022-02-06 18:17:44,408 - root - INFO - Step : 40/96
+2022-02-06 18:17:44,408 - root - INFO - Train loss : 13.57964
+2022-02-06 18:17:44,409 - root - INFO - time : 28.20928
