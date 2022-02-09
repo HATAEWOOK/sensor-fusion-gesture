@@ -1,4 +1,3 @@
-from msilib.schema import Error
 import sys
 sys.path.append('.')
 sys.path.append('..')

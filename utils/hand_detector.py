@@ -206,7 +206,7 @@ class HandDetector(object):
         yend = int(numpy.floor((com[1] * com[2] / self.fy + size[1] / 2.) / com[2]*self.fy))
         return xstart, xend, ystart, yend, zstart, zend
 
-    def getCrop(self, dpt, xstart, xend, ystart, yend, zstart, zend, thresh_z=True):
+    def getCrop(self, dpt, xstart, xend, ystart, yend, zstart, zend, thresh_z=False): #나중에 수정 thresh_z = True
         """
         Crop patch from image
         :param dpt: depth image to crop from
