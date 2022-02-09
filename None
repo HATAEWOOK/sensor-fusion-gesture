@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 2022-02-09 17:28:26,783 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-02-09 17:28:26
 2022-02-09 17:28:26,784 - root - INFO - tensorboard --logdir=D:/sfGesture/ckp\summaries
 2022-02-09 17:28:26,784 - root - INFO - Torch Version: 1.10.1
@@ -42,3 +43,29 @@
 2022-02-09 17:29:47,765 - root - INFO - ====== Learning rate changed! inf -> 1.00e-03 ======
 2022-02-09 17:29:48,205 - root - INFO - Model saved! Try num : 0, Epochs : 1, Loss : 6.176380793253581, Time : 2022-02-09 17:29:48
 2022-02-09 17:29:48,205 - root - INFO - ===== starting Epoch # 002
+=======
+2022-02-09 18:57:58,850 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-02-09 18:57:58
+2022-02-09 18:57:58,850 - root - INFO - tensorboard --logdir=/root/sensor-fusion-gesture/ckp/summaries
+2022-02-09 18:57:58,851 - root - INFO - Torch Version: 1.10.1
+
+2022-02-09 18:57:58,851 - root - INFO - Base dataset_dir is /root/Dataset/cvpr14_MSRAHandTrackingDB
+2022-02-09 18:57:58,967 - root - INFO - Using 2 CUDA cores [TITAN RTX] for training!
+2022-02-09 18:57:58,967 - root - INFO - Training on Multiple GPU's
+2022-02-09 18:58:04,098 - root - INFO - Started training at 2022-02-09_18:58:04 for 50 epochs
+2022-02-09 18:58:04,099 - root - INFO - ===== starting Epoch # 001
+2022-02-09 18:59:26,152 - root - INFO - Step : 10/48
+2022-02-09 18:59:26,153 - root - INFO - Train loss : 48.41517
+2022-02-09 18:59:26,153 - root - INFO - time : 82.05078
+2022-02-09 19:00:40,084 - root - INFO - Step : 20/48
+2022-02-09 19:00:40,085 - root - INFO - Train loss : 28.61788
+2022-02-09 19:00:40,085 - root - INFO - time : 155.98314
+2022-02-09 19:01:54,060 - root - INFO - Step : 30/48
+2022-02-09 19:01:54,060 - root - INFO - Train loss : 22.02334
+2022-02-09 19:01:54,061 - root - INFO - time : 229.95828
+2022-02-09 19:03:07,637 - root - INFO - Step : 40/48
+2022-02-09 19:03:07,638 - root - INFO - Train loss : 18.71637
+2022-02-09 19:03:07,638 - root - INFO - time : 303.53591
+2022-02-09 19:05:18,332 - root - INFO - Step : 10/12
+2022-02-09 19:05:18,333 - root - INFO - Evaluation loss : 9.03339
+2022-02-09 19:05:18,333 - root - INFO - time : 71.15768
+>>>>>>> af8870c9f0a9b074c53e4b8741fd5a1f2fce38f8

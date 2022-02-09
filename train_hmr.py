@@ -75,6 +75,7 @@ class Trainer:
         self.optimizer = optimizer
 
         # cuda 
+        os.environ["CUDA_VISIBLE_DEVICES"] = '0, 1'
         use_cuda = torch.cuda.is_available()
         if use_cuda:
             torch.cuda.empty_cache()
@@ -84,11 +85,12 @@ class Trainer:
         gpu_count = torch.cuda.device_count() if cfg.use_multigpu else 1
         if use_cuda:
             logger('Using %d CUDA cores [%s] for training!' % (gpu_count, gpu_brand))
-        self.model.to(self.device)
+        
         if cfg.use_multigpu:
-            self.model = torch.nn.DataParallel(self.model)
+            self.model = nn.DataParallel(self.model)
             logger("Training on Multiple GPU's")
 
+        self.model = self.model.to(self.device)
         self.load_data(cfg)
 
         # load learning rate
@@ -165,7 +167,6 @@ class Trainer:
         for b_idx, (sample) in enumerate(self.train_dataloader):
             depth_image = sample['processed'].to(self.device) #[bs, 1, 224, 224]
             target_joint = sample['j3d'].to(self.device) #[bs,1,21,3]
-            self.optimizer.zero_grad()
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
             # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
             m2d = Mano2depth(vert, faces)
@@ -187,6 +188,7 @@ class Trainer:
                 'lim_loss':lim_loss,
                 'total_loss':loss,
             }
+            self.optimizer.zero_grad()
             loss.requires_grad_(True)
             loss.backward()
             avg_meter.update(loss.detach().item(), depth_image.shape[0])
@@ -268,7 +270,7 @@ class Trainer:
                     pred_vert = vert[0].squeeze().cpu()
                     vrot = params[0].squeeze().cpu()
                     pred_keypt = keypt[0].squeeze().cpu()
-                    pred_faces = faces
+                    pred_faces = faces.detach().cpu()
                     np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_joint.txt'%(self.start_epoch, b_idx+1)), pred_joint.numpy())
                     np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_vert.txt'%(self.start_epoch, b_idx+1)), pred_vert.numpy())
                     np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_faces.txt'%(self.start_epoch, b_idx+1)), pred_faces)
@@ -358,8 +360,8 @@ if __name__ == "__main__":
         'momentum' : 1.9,
         'use_multigpu' : False,
         'best_model' : None, 
-        'num_workers' : 2, 
-        'batch_size' : 20, 
+        'num_workers' : 4, 
+        'batch_size' : 40, 
         'ckpt_term' : 50, 
         'n_epochs' : 50,
         'fitting' : True,

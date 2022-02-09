@@ -199,7 +199,7 @@ class Mano2depth():
                 self.cy = self.h / 2 - 0.5
                 self.cube = [180,180,180]
                 self.verts = verts
-                self.faces = faces
+                self.faces = np.asarray(faces.detach().cpu())
                 self.bs = verts.shape[0]
                 
         def mesh2depth(self, vis, path = None):
