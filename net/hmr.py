@@ -17,7 +17,6 @@ from utils.linear_model import LinearModel
 from utils.utils_mpi_model import MANO #temp
 import utils.utils_mobilenet_v3 as utils_mobilenet_v3 #tmep
 from utils.resnet import resnet152 
-from datasetloader.data_loader_RHD import data_load_rhd_clr
 from utils.train_utils import orthographic_proj_withz as proj
 
 
@@ -70,10 +69,11 @@ class HMR(nn.Module):
             fc_layers  =[num_features+self.num_param, 
                          int(num_features/2), 
                          int(num_features/2),
+                         int(num_features/2),
                          self.num_param],
-            use_dropout=[True, True, False], 
-            drop_prob  =[0.5, 0.5, 0], 
-            use_ac_func=[True, True, False],
+            use_dropout=[True,True,True,False], 
+            drop_prob  =[0.5, 0.5, 0.5, 0], 
+            use_ac_func=[True,True,True,False],
             num_param  =self.num_param,
             num_iters  =3,
             max_batch_size=self.max_batch_size)
@@ -92,13 +92,16 @@ class HMR(nn.Module):
         ang   = param[:, 16:].contiguous()  # [bs,23] Angle parameters
 
         pose = self.mano.convert_ang_to_pose(ang)
-        rvec = torch.tanh(rvec)*np.pi
+        # rvec = torch.tanh(rvec)*np.pi
         vert, joint = self.mano(beta, pose, rvec)
         faces = self.mano.F
 
         # Convert from m to mm
         vert *= 1000.0
         joint *= 1000.0
+
+        vert *= scale.unsqueeze(1).unsqueeze(2)
+        joint *=scale.unsqueeze(1).unsqueeze(2)
 
         # For STB dataset joint 0 is at palm center instead of wrist
         # Use half the distance between wrist and middle finger MCP as palm center (root joint)
@@ -112,8 +115,8 @@ class HMR(nn.Module):
 
         # if self.stb_dataset: # For publication to generate images for STB dataset
         # if not self.stb_dataset:
-        #     vert  = vert  - joint[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
-        # joint = joint - joint[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
+        vert  = vert  - joint[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
+        joint = joint - joint[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
             
         return keypt, joint, vert, ang, faces # [bs,21,2], [bs,21,3], [bs,778,3], [bs,23]
 
@@ -127,7 +130,7 @@ class HMR(nn.Module):
             keypt, joint, vert, ang, faces = self.compute_results(params[-1])
 
             if get_feature:
-                return keypt, joint, vert, ang, faces, params[-1],  features
+                return keypt, joint, vert, ang, faces, params[-1], features
             else:
                 return keypt, joint, vert, ang, faces, params[-1]
         else:

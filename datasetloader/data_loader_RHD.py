@@ -13,8 +13,6 @@ from scipy.spatial.transform import Rotation as R
 import cv2
 import matplotlib.pyplot as plt
 
-from utils.hand_detector import hand_detector
-
 def depth_two_uint8_to_float(top_bits, bottom_bits):
     """ Converts a RGB-coded depth into float valued depth. """
     depth_map = (top_bits * 2**8 + bottom_bits).astype('float32')

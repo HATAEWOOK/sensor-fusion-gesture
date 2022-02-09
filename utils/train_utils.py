@@ -1,3 +1,4 @@
+from msilib.schema import Error
 import sys
 sys.path.append('.')
 sys.path.append('..')
@@ -15,6 +16,9 @@ import os
 from datetime import datetime
 
 from utils.utils_mpi_model import MANO
+from utils.hand_detector import HandDetector
+
+path = 'D:/sfGesture/'
 
 class Data_preprocess():
         def __init__(self, jointNum, fx, fy, cx, cy, cube):
@@ -27,19 +31,14 @@ class Data_preprocess():
                 self.cube = cube
                 self.rng = np.random.RandomState(23455)
 
-        def preprocess_depth(self, depth_orig, com = None, preprocess = True):
-                depth_orig[depth_orig>1000]=0
-                if com is None:
-                        com = self.calculateCOM(depth_orig)
-                if preprocess:
-                        com, depth_crop, window = self.refineCOMIterative(depth_orig, com, 3)
-                        depth_train = self.makeLearningImage(depth_crop, com)
-                        self.window = window
-                else: 
-                        _, depth_crop, window = self.refineCOMIterative(depth_orig, com, 3)
-                        depth_train = self.makeLearningImage(depth_crop, com)
-                        self.window = window
-
+        def preprocess_depth(self, depth_orig):
+                depth_orig[depth_orig>500]=0
+                print("ckp1")
+                com = self.calculateCOM(depth_orig)
+                print("ckp2")
+                com, depth_crop, window = self.refineCOMIterative(depth_orig, com, 3)
+                depth_train = self.makeLearningImage(depth_orig, com)
+                        
                 return depth_train, depth_crop, com
 
         def makeLearningImage(self,img_crop,com):
@@ -48,7 +47,7 @@ class Data_preprocess():
                 cnnimg[cnnimg==0]=com[2]+self.cube[2]/2.
                 cnnimg=cnnimg-com[2]
                 cnnimg=cnnimg/(self.cube[2]/2.)
-                
+
                 cnnimg=cv2.resize(cnnimg,(s,s))
                 return np.copy(cnnimg)
 
@@ -66,14 +65,14 @@ class Data_preprocess():
 
                         cropped=self.crop(dpt,xstart,xend,ystart,yend,zstart,zend)
                         
-                        com=self.calculateCOM(cropped)
+                        com =self.calculateCOM(cropped)
                         
                         if np.allclose(com,0.):
                                 com[2]=cropped[cropped.shape[0]//2,cropped.shape[1]//2]
                         com[0]+=max(xstart,0)
                         com[1]+=max(ystart,0)
-        
-                return com,cropped,[xstart,xend,ystart,yend,zstart,zend]
+
+                return com,cropped,[xstart,xend,ystart,yend,zstart,zend] 
 
         def crop(self,dpt, xstart, xend, ystart, yend, zstart, zend, thresh_z=True):
                 cropped = dpt[ystart:yend, xstart:xend].copy()
@@ -106,16 +105,14 @@ class Data_preprocess():
                 dc[dc<minDepth]=0
                 dc[dc>maxDepth]=0
 
-                cc= ndimage.measurements.center_of_mass(dc>0) #0.001
-                
+                cc=ndimage.measurements.center_of_mass(dc>0) #0.001
+
                 num=np.count_nonzero(dc) #0.0005
                 
                 com=np.array((cc[1]*num,cc[0]*num,dc.sum()),np.float64) #0.0002
                 
                 if num==0:
-                        # raise Exception('com can not be calculated (calculateCOM)')  
-                        # print('com can not be calculated (calculateCOM)')
-                        return np.asarray([0.000001,0.000001,0.000001])
+                        raise Exception('com can not be calculated (calculateCOM)')  
                 else:
                         return com/num
 
@@ -204,16 +201,14 @@ class Mano2depth():
                 self.cx = self.w / 2 - 0.5
                 self.cy = self.h / 2 - 0.5
                 self.cube = [180,180,180]
-                self.dp = Data_preprocess(21, self.fx, self.fy, self.cx, self.cy, self.cube)
-
                 self.verts = verts
                 self.faces = faces
                 self.bs = verts.shape[0]
                 
-        def mesh2depth(self, vis, coms, path = None):
+        def mesh2depth(self, vis, path = None):
                 depths = []
                 save_screen_image = True
-                for vert, com in zip(self.verts, coms):
+                for vert in self.verts:
                         mesh = o3d.geometry.TriangleMesh()
                         vert = vert.detach().cpu()
                         mesh.vertices = o3d.utility.Vector3dVector(vert)
@@ -222,13 +217,19 @@ class Mano2depth():
                         vis.add_geometry(mesh)
                         if path is not None and save_screen_image:
                                 vis.capture_screen_image(path, do_render = True)
-                                vis.capture_depth_image(os.path.join('D:/sfGesture/depth', '001.png'), do_render = True)
                                 save_screen_image = False
-                        depth = vis.capture_depth_float_buffer(True)
+                        depth = vis.capture_depth_float_buffer(do_render =True)
                         vis.clear_geometries()
-                        # depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth), np.asarray(com), preprocess = False)
-                        depth_train, _, _ = self.dp.preprocess_depth(np.asarray(depth))
-                        depths.append(depth_train)
+                        vis.reset_view_point(True)
+                        depth = np.asarray(depth)
+                        if np.max(depth) != 0:
+                                depth /= np.max(depth)
+                        else:   
+                                print("depth is not captured", np.min(depth), np.max(depth))
+                        # hd = HandDetector(depth, self.fx, self.fy)
+                        # depth_resize, com = hd.croppedNormDepth()
+                        depth_resize = cv2.resize(depth, (224,224))
+                        depths.append(np.copy(depth_resize))
 
                 if len(depths) != self.bs: return print("Error in mesh2depth")
 
@@ -236,13 +237,10 @@ class Mano2depth():
 
 def save_image(img, path):
         img = img.squeeze().cpu()
-        img *= 100
+        # img *= 100
         fig = plt.figure(1, figsize=[6, 6])
-        if np.ndim(img) == 2:
-                plt.imshow(img, cmap='gray')
-        else:
-                plt.imshow(img)
-
+        plt.imshow(img, cmap='gray')
+        plt.imshow(img)
         plt.axis('off')
         fig.savefig(path)
         plt.close(fig)
