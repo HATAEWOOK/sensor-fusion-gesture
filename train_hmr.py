@@ -25,7 +25,7 @@ from tensorboardX import SummaryWriter
 
 from datasetloader.data_loader_MSRAHT import get_dataset
 from net.hmr import HMR
-from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess, set_vis, save_image
+from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess, set_vis, save_image, regularizer_loss
 from utils.config_parser import Config
 from net.hmr import HMR
 
@@ -175,14 +175,16 @@ class Trainer:
             depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
             j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
             j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
+            lim_loss = regularizer_loss(ang, params[:,6:16])
 
-            loss = depth_loss*1e1 + j2d_loss*1e-3 +j3d_loss*1e-4
+            loss = depth_loss*1e2 + j2d_loss*1e-3 +j3d_loss*1e-4
             # loss = j3d_loss
             # loss = depth_loss
             train_loss_dict = {
                 'depth_loss':depth_loss,
                 'j3d_loss':j3d_loss,
                 'j2d_loss':j2d_loss,
+                'lim_loss':lim_loss,
                 'total_loss':loss,
             }
             loss.requires_grad_(True)
@@ -233,13 +235,16 @@ class Trainer:
                 depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
                 j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
                 j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
-                loss = depth_loss*1e1 + j2d_loss*1e-3 +j3d_loss*1e-4
+                lim_loss = regularizer_loss(ang, params[:,6:16])
+
+                loss = depth_loss*1e2 + j2d_loss*1e-3 +j3d_loss*1e-4
                 # loss = j3d_loss
                 # loss = depth_loss
                 eval_loss_dict = {
                     'depth_loss':depth_loss,
                     'j3d_loss':j3d_loss,
                     'j2d_loss':j2d_loss,
+                    'lim_loss':lim_loss,
                     'total_loss':loss,
                 }
                 loss.requires_grad_(True)
@@ -293,18 +298,20 @@ class Trainer:
 
             train_avg_meter, train_loss_dict = self.train()
             print("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
-            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, total_loss : %.5f" % (
+            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, lim_loss : %.5f, total_loss : %.5f" % (
                 train_loss_dict['depth_loss'],
                 train_loss_dict['j3d_loss'], 
-                train_loss_dict['j2d_loss'], 
+                train_loss_dict['j2d_loss'],
+                train_loss_dict['lim_loss'],
                 train_loss_dict['total_loss']))
             
             eval_avg_meter, eval_loss_dict = self.eval()
             print("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
-            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, total_loss : %.5f" % (
+            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, lim_loss : %.5f, total_loss : %.5f" % (
                 eval_loss_dict['depth_loss'],
                 eval_loss_dict['j3d_loss'], 
-                eval_loss_dict['j2d_loss'], 
+                eval_loss_dict['j2d_loss'],
+                train_loss_dict['lim_loss'], 
                 eval_loss_dict['total_loss']))
 
             if self.cfg.fitting: 
@@ -335,21 +342,21 @@ class Trainer:
 if __name__ == "__main__":
     config = {
         'manual_seed' : 23455,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
-        # 'ckp_dir' : 'D:/sfGesture/ckp',
+        # 'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
+        'ckp_dir' : 'D:/sfGesture/ckp',
         'lr' : 1e-3,
         'lr_decay_gamma' : 0.1,
         'lr_decay_step' : 10,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
         'dataset' : 'MSRA_HT',
-        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
-        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
+        # 'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
         'try_num' : 0,
         'optimizer' : 'adam',
         'weight_decay' : 0,
         'momentum' : 1.9,
-        'use_multigpu' : True,
+        'use_multigpu' : False,
         'best_model' : None, 
         'num_workers' : 2, 
         'batch_size' : 20, 
