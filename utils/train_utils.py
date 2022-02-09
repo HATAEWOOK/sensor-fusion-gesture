@@ -1,8 +1,7 @@
-from msilib.schema import Error
 import sys
 sys.path.append('.')
 sys.path.append('..')
-sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
+# sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
 import numpy as np
 import cv2
 from scipy import stats, ndimage
@@ -17,8 +16,6 @@ from datetime import datetime
 
 from utils.utils_mpi_model import MANO
 from utils.hand_detector import HandDetector
-
-path = 'D:/sfGesture/'
 
 class Data_preprocess():
         def __init__(self, jointNum, fx, fy, cx, cy, cube):
