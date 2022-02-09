@@ -95,7 +95,7 @@ class HMR(nn.Module):
         # rvec = torch.tanh(rvec)*np.pi
         vert, joint = self.mano(beta, pose, rvec)
         faces = self.mano.F
-
+        faces = torch.tensor(faces).cuda()
         # Convert from m to mm
         vert *= 1000.0
         joint *= 1000.0
@@ -146,28 +146,18 @@ class HMR(nn.Module):
 ### Simple example to test the program                                      ###
 ###############################################################################
 if __name__ == '__main__':
-    def display_num_param(net):
-        nb_param = 0
-        for param in net.parameters():
-            nb_param += param.numel()
-        print('There are %d (%.2f million) parameters in this neural network' %
-            (nb_param, nb_param/1e6))
-    # device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
+    # def display_num_param(net):
+    #     nb_param = 0
+    #     for param in net.parameters():
+    #         nb_param += param.numel()
+    #     print('There are %d (%.2f million) parameters in this neural network' %
+    #         (nb_param, nb_param/1e6))
+    device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
     model = HMR() 
+    model = nn.DataParallel(model)
     # model.load_state_dict(torch.load('C:/Users/UVRLab/Desktop/sfGesture/model/hmr_model_freihand_auc.pth'))
-    # model.to(device)
+    model.to(device)
     model.eval()
-
-    # rhd = data_load_rhd_clr()
-    # img, label, hand, id = rhd[7]
-    # if hand is None:
-    #     print(hand)
-    # elif hand == 'Left':
-    #     print(hand)
-    # else:
-    #     keypt, joint, vert, ang, params = model(img.to(device).unsqueeze(0))
-    #     print(params[0][3:6])
-
 
     # display_num_param(model) # 3.82 million for MobileNetV3 Small
     # print(model.state_dict().keys())
