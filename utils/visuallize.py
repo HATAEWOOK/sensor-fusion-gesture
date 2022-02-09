@@ -68,7 +68,8 @@ if __name__ == '__main__':
     path = 'D:/sfGesture/ckp/results(depth+j3d+j2d)(2)'
     vert = 'E3_20_vert'
     faces = 'E3_20_faces'
-    joints = 'E3_20_joint'
+    joints = 'E11_20_joint'
 
     v = Visualizer(path, vert, faces, joints)
-    
+    j = v.joint_mesh()
+    v.mesh_show(j)
