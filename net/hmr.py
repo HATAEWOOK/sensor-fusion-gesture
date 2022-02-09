@@ -100,8 +100,8 @@ class HMR(nn.Module):
         vert *= 1000.0
         joint *= 1000.0
 
-        vert *= scale.unsqueeze(1).unsqueeze(2)
-        joint *=scale.unsqueeze(1).unsqueeze(2)
+        # vert *= scale.unsqueeze(1).unsqueeze(2)
+        # joint *=scale.unsqueeze(1).unsqueeze(2)
 
         # For STB dataset joint 0 is at palm center instead of wrist
         # Use half the distance between wrist and middle finger MCP as palm center (root joint)

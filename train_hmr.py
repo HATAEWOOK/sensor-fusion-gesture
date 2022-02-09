@@ -102,8 +102,8 @@ class Trainer:
                 )
 
         # loss
-        self.depth_criterion = torch.nn.SmoothL1Loss(beta=0.5)
-        self.joint_criterion = torch.nn.MSELoss()
+        self.depth_criterion = torch.nn.SmoothL1Loss(reduction='mean')
+        self.joint_criterion = torch.nn.MSELoss(reduction='mean')
 
         # etc
         self.cfg = cfg
@@ -173,15 +173,15 @@ class Trainer:
             # target_keypt = target_joint.squeeze()[:,:,:2] * params[:,0].contiguous().unsqueeze(1).unsqueeze(2) + params[:, 1:3].contiguous().unsqueeze(1)
             target_keypt = target_joint.squeeze()[:,:,:2]
             depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
-            # j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
+            j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
             j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
 
-            loss = depth_loss*1e1 + j2d_loss/21
+            loss = depth_loss*1e1 + j2d_loss*1e-3 +j3d_loss*1e-4
             # loss = j3d_loss
             # loss = depth_loss
             train_loss_dict = {
                 'depth_loss':depth_loss,
-                # 'j3d_loss':j3d_loss,
+                'j3d_loss':j3d_loss,
                 'j2d_loss':j2d_loss,
                 'total_loss':loss,
             }
@@ -231,14 +231,14 @@ class Trainer:
                 # target_keypt = target_joint.squeeze()[:,:,:2] * params[:,0].contiguous().unsqueeze(1).unsqueeze(2) + params[:, 1:3].contiguous().unsqueeze(1)
                 target_keypt = target_joint.squeeze()[:,:,:2]
                 depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
-                # j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
+                j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
                 j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
-                loss = depth_loss*1e2 + j2d_loss*1e-3
+                loss = depth_loss*1e1 + j2d_loss*1e-3 +j3d_loss*1e-4
                 # loss = j3d_loss
                 # loss = depth_loss
                 eval_loss_dict = {
                     'depth_loss':depth_loss,
-                    # 'j3d_loss':j3d_loss,
+                    'j3d_loss':j3d_loss,
                     'j2d_loss':j2d_loss,
                     'total_loss':loss,
                 }
@@ -294,19 +294,17 @@ class Trainer:
             train_avg_meter, train_loss_dict = self.train()
             print("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
             print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, total_loss : %.5f" % (
-                train_loss_dict['depth_loss']*1e2,
-                # train_loss_dict['j3d_loss']*1e-4, 
-                0.0,
-                train_loss_dict['j2d_loss']*1e-3, 
+                train_loss_dict['depth_loss'],
+                train_loss_dict['j3d_loss'], 
+                train_loss_dict['j2d_loss'], 
                 train_loss_dict['total_loss']))
             
             eval_avg_meter, eval_loss_dict = self.eval()
             print("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
             print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, total_loss : %.5f" % (
-                eval_loss_dict['depth_loss']*1e2,
-                # eval_loss_dict['j3d_loss']*1e-4, 
-                0.0,
-                eval_loss_dict['j2d_loss']*1e-3, 
+                eval_loss_dict['depth_loss'],
+                eval_loss_dict['j3d_loss'], 
+                eval_loss_dict['j2d_loss'], 
                 eval_loss_dict['total_loss']))
 
             if self.cfg.fitting: 
@@ -351,7 +349,7 @@ if __name__ == "__main__":
         'optimizer' : 'adam',
         'weight_decay' : 0,
         'momentum' : 1.9,
-        'use_multigpu' : False,
+        'use_multigpu' : True,
         'best_model' : None, 
         'num_workers' : 2, 
         'batch_size' : 20, 

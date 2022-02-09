@@ -1,6 +1,9 @@
-2022-02-09 14:55:27,596 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-02-09 14:55:27
-2022-02-09 14:55:27,597 - root - INFO - tensorboard --logdir=/root/sensor-fusion-gesture/ckp/summaries
-2022-02-09 14:55:27,597 - root - INFO - Torch Version: 1.10.1
+2022-02-09 17:23:58,461 - root - INFO - [test1] - Started training GrabNet, experiment code 2022-02-09 17:23:58
+2022-02-09 17:23:58,462 - root - INFO - tensorboard --logdir=/root/sensor-fusion-gesture/ckp/summaries
+2022-02-09 17:23:58,462 - root - INFO - Torch Version: 1.10.1
 
-2022-02-09 14:55:27,597 - root - INFO - Base dataset_dir is /root/Dataset/cvpr14_MSRAHandTrackingDB
-2022-02-09 14:55:27,609 - root - INFO - Using 1 CUDA cores [TITAN RTX] for training!
+2022-02-09 17:23:58,462 - root - INFO - Base dataset_dir is /root/Dataset/cvpr14_MSRAHandTrackingDB
+2022-02-09 17:23:58,561 - root - INFO - Using 2 CUDA cores [TITAN RTX] for training!
+2022-02-09 17:24:03,471 - root - INFO - Training on Multiple GPU's
+2022-02-09 17:24:03,663 - root - INFO - Started training at 2022-02-09_17:24:03 for 50 epochs
+2022-02-09 17:24:03,664 - root - INFO - ===== starting Epoch # 001
