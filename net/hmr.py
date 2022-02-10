@@ -149,9 +149,7 @@ class HMR(nn.Module):
 if __name__ == '__main__':
     # device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
     model = HMR() 
-    model = nn.DataParallel(model)
     # model.load_state_dict(torch.load('C:/Users/UVRLab/Desktop/sfGesture/model/hmr_model_freihand_auc.pth'))
-    model.to(device)
     model.eval()
 
     # display_num_param(model) # 3.82 million for MobileNetV3 Small

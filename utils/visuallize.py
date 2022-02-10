@@ -9,14 +9,15 @@ import open3d as o3d
 import matplotlib.pyplot as plt
 
 class Visualizer():
-    def __init__(self, path, vert_file, faces_file, joints_file):
-        self.path = path
-        verts = os.path.join(path, vert_file + '.txt')
-        faces = os.path.join(path, faces_file + '.txt')
-        joints = os.path.join(path, joints_file + '.txt')
-        self.verts = np.loadtxt(verts, dtype=float, delimiter=' ', skiprows=0)
-        self.faces = np.loadtxt(faces, dtype=float, delimiter=' ', skiprows=0)
-        self.joints = np.loadtxt(joints, dtype=float, delimiter=' ', skiprows=0)
+    def __init__(self, path, epoch, ibx):
+            self.path = path
+            file = f'E{epoch}_{ibx}_'
+            verts = os.path.join(path, file + 'vert' + '.txt')
+            faces = os.path.join(path, file + 'faces' + '.txt')
+            joints = os.path.join(path, file + 'joint' + '.txt')
+            self.verts = np.loadtxt(verts, dtype=float, delimiter=' ', skiprows=0)
+            self.faces = np.loadtxt(faces, dtype=float, delimiter=' ', skiprows=0)
+            self.joints = np.loadtxt(joints, dtype=float, delimiter=' ', skiprows=0)
 
     def joint_mesh(self, data=None, radius = 2):
         i = 0

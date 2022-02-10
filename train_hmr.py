@@ -103,6 +103,11 @@ class Trainer:
                     optimizer, cfg.lr_decay_step, gamma = cfg.lr_decay_gamma
                 )
 
+        if cfg.lr_reduce:
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, patience=5, 
+            )
+
         # loss
         self.depth_criterion = torch.nn.SmoothL1Loss(reduction='mean')
         self.joint_criterion = torch.nn.MSELoss(reduction='mean')
@@ -226,7 +231,7 @@ class Trainer:
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
 
                 if (b_idx+1) % ckpt == 0:
-                    vis_path =  os.path.join(self.cfg.ckp_dir, 'results', 'E%3d_%3d_pred_3d.png'%(self.start_epoch, b_idx+1))
+                    vis_path =  os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_pred_3d.png'%(self.start_epoch, b_idx+1))
                 else:
                     vis_path = None
 
@@ -302,8 +307,7 @@ class Trainer:
             print("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
             print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                 train_loss_dict['depth_loss'],
-                # train_loss_dict['j3d_loss'], 
-                0.0,
+                train_loss_dict['j3d_loss'],
                 train_loss_dict['j2d_loss'],
                 train_loss_dict['reg_loss'],
                 train_loss_dict['total_loss']))
@@ -321,6 +325,10 @@ class Trainer:
             if self.cfg.fitting: 
                 if self.cfg.lr_decay_gamma:
                     self.scheduler.step()
+
+                if self.cfg.lr_reduce:
+                    self.scheduler.step(eval_loss_dict['total_loss'])
+
                 cur_lr = self.optimizer.param_groups[0]['lr']
 
                 if cur_lr != prev_lr:
@@ -351,6 +359,7 @@ if __name__ == "__main__":
         'lr' : 1e-4,
         'lr_decay_gamma' : 0.1,
         'lr_decay_step' : 10,
+        'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
         'dataset' : 'MSRA_HT',
@@ -360,12 +369,12 @@ if __name__ == "__main__":
         'optimizer' : 'adam',
         'weight_decay' : 0,
         'momentum' : 1.9,
-        'use_multigpu' : False,
+        'use_multigpu' : True,
         'best_model' : None, 
         'num_workers' : 2, 
         'batch_size' : 10, 
         'ckpt_term' : 50, 
-        'n_epochs' : 50,
+        'n_epochs' : 200,
         'fitting' : True,
     }
 

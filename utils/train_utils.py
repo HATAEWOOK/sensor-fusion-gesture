@@ -1,4 +1,5 @@
 import sys
+from cv2 import Param_MAT
 sys.path.append('.')
 sys.path.append('..')
 # sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
