@@ -117,6 +117,7 @@ class HMR(nn.Module):
         # if not self.stb_dataset:
         vert  = vert  - joint[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
         joint = joint - joint[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
+        keypt = keypt - keypt[:,9,:].unsqueeze(1)
             
         return keypt, joint, vert, ang, faces # [bs,21,2], [bs,21,3], [bs,778,3], [bs,23]
 
@@ -146,17 +147,9 @@ class HMR(nn.Module):
 ### Simple example to test the program                                      ###
 ###############################################################################
 if __name__ == '__main__':
-    # def display_num_param(net):
-    #     nb_param = 0
-    #     for param in net.parameters():
-    #         nb_param += param.numel()
-    #     print('There are %d (%.2f million) parameters in this neural network' %
-    #         (nb_param, nb_param/1e6))
-    device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
     model = HMR() 
-    model = nn.DataParallel(model)
     # model.load_state_dict(torch.load('C:/Users/UVRLab/Desktop/sfGesture/model/hmr_model_freihand_auc.pth'))
-    model.to(device)
     model.eval()
 
     # display_num_param(model) # 3.82 million for MobileNetV3 Small
@@ -167,11 +160,25 @@ if __name__ == '__main__':
     image = torch.randn(bs,1,224,224)
     print(image.shape)
     keypt, joint, vert, ang, faces, params = model(image)
-    print(torch.max(joint))
+    mano = MANO()
+    lis = []
 
-    print('keypt', keypt.shape) # [bs,21,2]
-    print('joint', joint.shape) # [bs,21,3]
-    print('vert', vert.shape) # [bs,778,3]
-    print('ang', ang.shape, ang[0][0]) # [bs,23] 
-    print('faces', faces.shape) #(1538,3)#
-    print('params', len(params),params[0][3:6]) # 3 [bs,39] #vrec
+    for i in range(ang.shape[0]):
+        li = mano.compute_ang_limit(ang[i])
+        lis.append(li.detach())
+
+    beta = params[:, 6:16]
+    beta_norm = np.linalg.norm(beta.detach().numpy(), axis=1, ord=2) ** 2
+    loss = np.asarray(lis) + beta_norm
+    print(np.mean(loss))
+
+
+
+    # print(torch.max(joint))
+
+    # print('keypt', keypt.shape) # [bs,21,2]
+    # print('joint', joint.shape) # [bs,21,3]
+    # print('vert', vert.shape) # [bs,778,3]
+    # print('ang', ang.shape, ang[0][0]) # [bs,23] 
+    # print('faces', faces.shape) #(1538,3)#
+    # print('params', len(params),params[0][3:6]) # 3 [bs,39] #vrec

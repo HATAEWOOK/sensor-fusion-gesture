@@ -29,7 +29,7 @@ class MANO(nn.Module):
         ### Load parameters from file ###
         #################################
         file_path = './model/MANO_RIGHT.pkl'
-        print(os.path.isfile(file_path))
+        # print(os.path.isfile(file_path))
         dd = pickle.load(open(file_path, 'rb'), encoding='latin1')
 
         # Standardize naming convention to a single capital letter
@@ -181,7 +181,7 @@ class MANO(nn.Module):
 
         self.ReLU = nn.ReLU() # For ReLU(x) = max(0,x)
 
-        print('[MANO] Loaded', file_path)
+        # print('[MANO] Loaded', file_path)
 
 
     def convert_pca_to_pose(self, ppca):
