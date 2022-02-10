@@ -117,6 +117,7 @@ class HMR(nn.Module):
         # if not self.stb_dataset:
         vert  = vert  - joint[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
         joint = joint - joint[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
+        keypt = keypt - keypt[:,9,:].unsqueeze(1)
             
         return keypt, joint, vert, ang, faces # [bs,21,2], [bs,21,3], [bs,778,3], [bs,23]
 
@@ -146,17 +147,7 @@ class HMR(nn.Module):
 ### Simple example to test the program                                      ###
 ###############################################################################
 if __name__ == '__main__':
-<<<<<<< HEAD
     # device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
-=======
-    # def display_num_param(net):
-    #     nb_param = 0
-    #     for param in net.parameters():
-    #         nb_param += param.numel()
-    #     print('There are %d (%.2f million) parameters in this neural network' %
-    #         (nb_param, nb_param/1e6))
-    device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
->>>>>>> af8870c9f0a9b074c53e4b8741fd5a1f2fce38f8
     model = HMR() 
     model = nn.DataParallel(model)
     # model.load_state_dict(torch.load('C:/Users/UVRLab/Desktop/sfGesture/model/hmr_model_freihand_auc.pth'))

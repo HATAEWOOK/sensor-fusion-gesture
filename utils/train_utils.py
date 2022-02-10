@@ -259,6 +259,8 @@ def orthographic_proj_withz(X, trans, scale, offset_z=0.):
     return torch.cat((proj_xy, proj_z), 2)
 
 def regularizer_loss(ang, beta):
+        ang = ang.detach().cpu()
+        beta = beta.detach().cpu()
         mano = MANO()
         limits = []
 
@@ -266,7 +268,7 @@ def regularizer_loss(ang, beta):
                 limit = mano.compute_ang_limit(ang[i])
                 limits.append(limit.detach())
         
-        beta_norm = np.linalg.norm(beta.detach().numpy, axis=1, ord = 2) ** 2
+        beta_norm = np.linalg.norm(beta.numpy(), axis=1, ord = 2) ** 2
         loss = np.asarray(limits) + beta_norm
 
         return np.mean(loss)

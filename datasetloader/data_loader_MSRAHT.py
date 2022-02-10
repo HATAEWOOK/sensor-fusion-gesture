@@ -112,15 +112,16 @@ class MSRA_HT:
     def get_filename(self, idx):
         i = idx // 400
         if i == 0:
-            name = f'S{i}_id{idx}'
+            name = f'S{i+1}_id{idx}'
         else:
-            name = f'S{i}_id{idx % (400 * i)}'
+            name = f'S{i+1}_id{idx % (400 * i)}'
         return name
 
     def get_j3d(self, idx):
         j3d = self.jointlists[idx]
         j3d = np.insert(j3d, 1, j3d[17:21], axis=0)
         j3d = np.delete(j3d, slice(21,25), axis=0)
+        j3d = j3d - j3d[9,:]
         return j3d
 
     def __len__(self):
