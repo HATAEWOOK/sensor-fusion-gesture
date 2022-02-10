@@ -179,18 +179,16 @@ class Trainer:
             # target_keypt = target_joint.squeeze()[:,:,:2] * params[:,0].contiguous().unsqueeze(1).unsqueeze(2) + params[:, 1:3].contiguous().unsqueeze(1)
             target_keypt = target_joint.squeeze()[:,:,:2]
             depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
-            j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
+            # j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
             j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
             reg_loss = regularizer_loss(ang, params[:,6:16])
 
-            # loss = depth_loss*1e6 + j2d_loss*1e1 +j3d_loss + reg_loss
-            # loss = depth_loss*1e5 + j2d_loss + reg_loss*1e-1
             loss = depth_loss*1e4 + j2d_loss*1e-1 + reg_loss
-            # loss = j3d_loss
+            # loss = j2d_loss
             # loss = depth_loss
             train_loss_dict = {
                 'depth_loss':depth_loss,
-                'j3d_loss':j3d_loss,
+                # 'j3d_loss':j3d_loss,
                 'j2d_loss':j2d_loss,
                 'reg_loss':reg_loss,
                 'total_loss':loss,
@@ -242,17 +240,16 @@ class Trainer:
                 # target_keypt = target_joint.squeeze()[:,:,:2] * params[:,0].contiguous().unsqueeze(1).unsqueeze(2) + params[:, 1:3].contiguous().unsqueeze(1)
                 target_keypt = target_joint.squeeze()[:,:,:2]
                 depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
-                j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
+                # j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
                 j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
                 reg_loss = regularizer_loss(ang, params[:,6:16])
 
-                # loss = depth_loss*1e6 + j2d_loss*1e1 +j3d_loss + reg_loss*1e2
-                # loss = depth_loss*1e5 + j2d_loss + reg_loss*1e-1
+                # loss = depth_loss*1e2 + j2d_loss*1e-3 +j3d_loss*1e-4
                 loss = depth_loss*1e4 + j2d_loss*1e-1 + reg_loss
                 # loss = depth_loss
                 eval_loss_dict = {
                     'depth_loss':depth_loss,
-                    'j3d_loss':j3d_loss,
+                    # 'j3d_loss':j3d_loss,
                     'j2d_loss':j2d_loss,
                     'reg_loss':reg_loss,
                     'total_loss':loss,
@@ -319,7 +316,8 @@ class Trainer:
             print("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
             print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                 eval_loss_dict['depth_loss'],
-                eval_loss_dict['j3d_loss'], 
+                # eval_loss_dict['j3d_loss'], 
+                0.0,
                 eval_loss_dict['j2d_loss'],
                 eval_loss_dict['reg_loss'], 
                 eval_loss_dict['total_loss']))
@@ -373,8 +371,8 @@ if __name__ == "__main__":
         'momentum' : 1.9,
         'use_multigpu' : True,
         'best_model' : None, 
-        'num_workers' : 4, 
-        'batch_size' : 40, 
+        'num_workers' : 2, 
+        'batch_size' : 10, 
         'ckpt_term' : 50, 
         'n_epochs' : 200,
         'fitting' : True,
