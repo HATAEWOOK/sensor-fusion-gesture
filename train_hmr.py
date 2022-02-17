@@ -1,13 +1,9 @@
 """
-필요한가?
 Trainting for get rotation of hand from mano hand model
 Input : RGB(? x ?)
 Output : rvec
 """
-# ToDO : ADD joint loss!!!!
-from ctypes.wintypes import tagMSG
 import sys
-from tracemalloc import start
 sys.path.append('.')
 sys.path.append('..')
 # sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
@@ -25,27 +21,32 @@ from tensorboardX import SummaryWriter
 
 from datasetloader.data_loader_MSRAHT import get_dataset
 from net.hmr import HMR
-from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess, set_vis, save_image, regularizer_loss
+from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess, set_vis, save_image, regularizer_loss, normalize
 from utils.config_parser import Config
 from net.hmr import HMR
+from net.hmr_s2 import HMRS2, ResNet_Mano, BasicBlock, Bottleneck, DeconvBottleneck
 
 class Trainer:
-    def __init__(self, cfg, model):
+    def __init__(self, cfg, model, vis):
         # Initialize randoms seeds
         torch.cuda.manual_seed_all(cfg.manual_seed)
         torch.manual_seed(cfg.manual_seed)
         np.random.seed(cfg.manual_seed)
         random.seed(cfg.manual_seed)
+        torch.backends.cudnn.benchmark = False
 
         starttime = datetime.now().replace(microsecond=0)
 
         #checkpoint dir
-        log_path = os.makedirs(os.path.join(cfg.ckp_dir, 'logs'), exist_ok=True)
+        os.makedirs(cfg.ckp_dir, exist_ok=True)
+        self.save_path = os.path.join(cfg.ckp_dir,'results%d'%cfg.config_num)
+        os.makedirs(self.save_path, exist_ok=True)
+        log_path = os.path.join(self.save_path, 'logs')
+        os.makedirs(log_path, exist_ok=True)
         logger = mklogger(log_path).info
         self.logger = logger
-        os.makedirs(cfg.ckp_dir, exist_ok=True)
-        summary_logdir = os.path.join(cfg.ckp_dir, 'summaries')
-        self.swriter = SummaryWriter(log_dir=summary_logdir)
+        summary_logdir = os.path.join(self.save_path, 'summaries')
+        self.swriter = SummaryWriter()
         logger('[%s] - Started training GrabNet, experiment code %s' % (cfg.expr_ID, starttime))
         logger('tensorboard --logdir=%s' % summary_logdir)
         logger('Torch Version: %s\n' % torch.__version__)
@@ -59,7 +60,7 @@ class Trainer:
         # Initialize optimizer
         if cfg.optimizer == "adam":
             optimizer = torch.optim.Adam(
-                model_params, lr=cfg.lr, weight_decay=cfg.weight_decay, betas=(0.5, 0.99)
+                model_params, lr=cfg.lr, weight_decay=cfg.weight_decay, betas=(0.9, 0.999)
             )
         elif cfg.optimizer == "rms":
             optimizer = torch.optim.RMSprop(
@@ -105,17 +106,21 @@ class Trainer:
 
         if cfg.lr_reduce:
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, patience=5, 
+                optimizer, patience=1, 
             )
 
         # loss
-        self.depth_criterion = torch.nn.SmoothL1Loss(reduction='mean')
+        if cfg.SmmothL1loss_depth:
+            self.depth_criterion = torch.nn.SmoothL1Loss(reduction='mean')
+        if cfg.MSEloss_depth:
+            self.depth_criterion = torch.nn.MSELoss(reduction='mean')
+
         self.joint_criterion = torch.nn.MSELoss(reduction='mean')
 
         # etc
         self.cfg = cfg
         self.start_epoch = 0
-        self.vis = set_vis()
+        self.vis = vis
 
     def save_model(self):
         torch.save(self.model.module.state_dict() if isinstance(self.model, torch.nn.DataParallel) 
@@ -172,23 +177,38 @@ class Trainer:
         for b_idx, (sample) in enumerate(self.train_dataloader):
             depth_image = sample['processed'].to(self.device) #[bs, 1, 224, 224]
             target_joint = sample['j3d'].to(self.device) #[bs,1,21,3]
+            target_keypt = sample['j2d'].to(self.device)
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
             # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
             m2d = Mano2depth(vert, faces)
             pred_depth = m2d.mesh2depth(self.vis) #[bs, 224, 224]
-            # target_keypt = target_joint.squeeze()[:,:,:2] * params[:,0].contiguous().unsqueeze(1).unsqueeze(2) + params[:, 1:3].contiguous().unsqueeze(1)
-            target_keypt = target_joint.squeeze()[:,:,:2]
-            depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
-            # j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
-            j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
-            reg_loss = regularizer_loss(ang, params[:,6:16])
 
-            loss = depth_loss*1e4 + j2d_loss*1e-1 + reg_loss
+            if self.cfg.normalize:
+                target_keypt = normalize(target_keypt, dim='2d')
+                keypt = normalize(keypt, dim='2d')
+                target_joint = normalize(target_joint)
+                joint - normalize(joint)
+
+            depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
+            j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
+            j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt.squeeze())
+            reg_loss = torch.tensor(regularizer_loss(ang, theta = self.cfg.to_mano)).to(self.device)
+
+            if self.cfg.depth_loss_weight != 0:
+                depth_loss.requires_grad_(True)
+            if self.cfg.j2d_loss_weight != 0:
+                j2d_loss.requires_grad_(True)
+            if self.cfg.j3d_loss_weight != 0:
+                j3d_loss.requires_grad_(True)
+            if self.cfg.reg_loss_weight != 0:
+                reg_loss.requires_grad_(True)
+
+            loss = depth_loss*self.cfg.depth_loss_weight + j2d_loss*self.cfg.j2d_loss_weight + reg_loss*self.cfg.reg_loss_weight + j3d_loss*self.cfg.j3d_loss_weight
             # loss = j2d_loss
             # loss = depth_loss
             train_loss_dict = {
                 'depth_loss':depth_loss,
-                # 'j3d_loss':j3d_loss,
+                'j3d_loss':j3d_loss,
                 'j2d_loss':j2d_loss,
                 'reg_loss':reg_loss,
                 'total_loss':loss,
@@ -203,12 +223,12 @@ class Trainer:
                 self.logger('Step : %s/%s' % (b_idx+1, len(self.train_dataloader)))
                 self.logger('Train loss : %.5f' % avg_meter.avg)
                 self.logger('time : %.5f' % term)
-
-                print(
-                    f'Step : {b_idx+1} / {len(self.train_dataloader)},' + \
-                        f'Train loss : {avg_meter.avg:.5f},' + \
-                            f'time: {term:.5f},', end = '\r'
-                )
+                self.logger("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
+                train_loss_dict['depth_loss'],
+                train_loss_dict['j3d_loss'],
+                train_loss_dict['j2d_loss'],
+                train_loss_dict['reg_loss'],
+                train_loss_dict['total_loss']))
 
             self.optimizer.step()
 
@@ -218,7 +238,7 @@ class Trainer:
     def eval(self):
         avg_meter = AverageMeter()
         self.model.eval()
-        ckpt = 10
+        ckpt = 5
         t = time.time()
 
         for b_idx, (sample) in enumerate(self.test_dataloader):
@@ -226,30 +246,43 @@ class Trainer:
                 depth_image = sample['processed'].to(self.device).float() #[bs, 1, 224, 224]
                 coms = sample['com']
                 target_joint = sample['j3d'].to(self.device) #[bs,1,21,3]
+                target_keypt = sample['j2d'].to(self.device)
                 name = sample['name']
                 keypt, joint, vert, ang, faces, params = self.model(depth_image)
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
 
                 if (b_idx+1) % ckpt == 0:
-                    vis_path =  os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_pred_3d.png'%(self.start_epoch, b_idx+1))
+                    vis_path =  os.path.join(self.save_path, 'E%d_%d_pred_3d.png'%(self.start_epoch, b_idx+1))
                 else:
                     vis_path = None
 
+                if self.cfg.normalize:
+                    target_keypt = normalize(target_keypt, dim='2d')
+                    keypt = normalize(keypt, dim='2d')
+                    target_joint = normalize(target_joint)
+                    joint - normalize(joint)
+
                 m2d = Mano2depth(vert, faces)
                 pred_depth = m2d.mesh2depth(self.vis, path = vis_path) #[bs, 224, 224]
-                # target_keypt = target_joint.squeeze()[:,:,:2] * params[:,0].contiguous().unsqueeze(1).unsqueeze(2) + params[:, 1:3].contiguous().unsqueeze(1)
-                target_keypt = target_joint.squeeze()[:,:,:2]
                 depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
-                # j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
-                j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt)
-                reg_loss = regularizer_loss(ang, params[:,6:16])
+                j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
+                j2d_loss = self.joint_criterion(keypt.to(self.device), target_keypt.squeeze())
+                reg_loss = torch.tensor(regularizer_loss(ang, theta = self.cfg.to_mano)).to(self.device)
 
-                # loss = depth_loss*1e2 + j2d_loss*1e-3 +j3d_loss*1e-4
-                loss = depth_loss*1e4 + j2d_loss*1e-1 + reg_loss
-                # loss = depth_loss
+                if self.cfg.depth_loss_weight != 0:
+                    depth_loss.requires_grad_(True)
+                if self.cfg.j2d_loss_weight != 0:
+                    j2d_loss.requires_grad_(True)
+                if self.cfg.j3d_loss_weight != 0:
+                    j3d_loss.requires_grad_(True)
+                if self.cfg.reg_loss_weight != 0:
+                    reg_loss.requires_grad_(True)
+
+                loss = depth_loss*self.cfg.depth_loss_weight + j2d_loss*self.cfg.j2d_loss_weight + reg_loss*self.cfg.reg_loss_weight + j3d_loss*self.cfg.j3d_loss_weight
+
                 eval_loss_dict = {
                     'depth_loss':depth_loss,
-                    # 'j3d_loss':j3d_loss,
+                    'j3d_loss':j3d_loss,
                     'j2d_loss':j2d_loss,
                     'reg_loss':reg_loss,
                     'total_loss':loss,
@@ -257,17 +290,17 @@ class Trainer:
                 loss.requires_grad_(True)
                 avg_meter.update(loss.detach().item(), depth_image.shape[0])
 
-                if (b_idx+1) % ckpt == 0:
+                if (b_idx+1) % ckpt == 0 and (b_idx+1) == 7:
                     term = time.time() - t
                     self.logger('Step : %s/%s' % (b_idx+1, len(self.test_dataloader)))
                     self.logger('Evaluation loss : %.5f' % avg_meter.avg)
                     self.logger('time : %.5f' % term)
-
-                    print(
-                        f'Step : {b_idx+1} / {len(self.test_dataloader)},' + \
-                            f'Evaluation loss : {avg_meter.avg:.5f},' + \
-                                f'time: {term:.5f},', end = '\r'
-                    )  
+                    self.logger("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
+                    eval_loss_dict['depth_loss'],
+                    eval_loss_dict['j3d_loss'], 
+                    eval_loss_dict['j2d_loss'],
+                    eval_loss_dict['reg_loss'], 
+                    eval_loss_dict['total_loss']))
 
                     pred = pred_depth[0]
                     target = depth_image[0]
@@ -276,15 +309,16 @@ class Trainer:
                     vrot = params[0].squeeze().cpu()
                     pred_keypt = keypt[0].squeeze().cpu()
                     pred_faces = faces.detach().cpu()
-                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_joint.txt'%(self.start_epoch, b_idx+1)), pred_joint.numpy())
-                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_vert.txt'%(self.start_epoch, b_idx+1)), pred_vert.numpy())
-                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_faces.txt'%(self.start_epoch, b_idx+1)), pred_faces)
-                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_vrot.txt'%(self.start_epoch, b_idx+1)), vrot.numpy())
-                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_pred.txt'%(self.start_epoch, b_idx+1)), pred.squeeze().cpu().numpy())
-                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_target.txt'%(self.start_epoch, b_idx+1)), target.squeeze().cpu().numpy())
-                    np.savetxt(os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_keypt.txt'%(self.start_epoch, b_idx+1)), pred_keypt.numpy())
-                    save_image(pred, os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_pred_%s.png'%(self.start_epoch, b_idx+1, name[0])))
-                    save_image(target, os.path.join(self.cfg.ckp_dir, 'results', 'E%d_%d_target_%s.png'%(self.start_epoch, b_idx+1, name[0])))
+
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_joint.txt'%(self.start_epoch, b_idx+1)), pred_joint.numpy())
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_vert.txt'%(self.start_epoch, b_idx+1)), pred_vert.numpy())
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_faces.txt'%(self.start_epoch, b_idx+1)), pred_faces)
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_vrot.txt'%(self.start_epoch, b_idx+1)), vrot.numpy())
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_pred.txt'%(self.start_epoch, b_idx+1)), pred.squeeze().cpu().numpy())
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_target.txt'%(self.start_epoch, b_idx+1)), target.squeeze().cpu().numpy())
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_keypt.txt'%(self.start_epoch, b_idx+1)), pred_keypt.numpy())
+                    save_image(pred, os.path.join(self.save_path, 'E%d_%d_pred_%s.png'%(self.start_epoch, b_idx+1, name[0])))
+                    save_image(target, os.path.join(self.save_path, 'E%d_%d_target_%s.png'%(self.start_epoch, b_idx+1, name[0])))
 
         return avg_meter, eval_loss_dict
 
@@ -304,8 +338,8 @@ class Trainer:
             self.logger('===== starting Epoch # %03d' % epoch_num)
 
             train_avg_meter, train_loss_dict = self.train()
-            print("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
-            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
+            self.logger("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
+            self.logger("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                 train_loss_dict['depth_loss'],
                 train_loss_dict['j3d_loss'],
                 train_loss_dict['j2d_loss'],
@@ -313,11 +347,10 @@ class Trainer:
                 train_loss_dict['total_loss']))
             
             eval_avg_meter, eval_loss_dict = self.eval()
-            print("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
-            print("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
+            self.logger("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
+            self.logger("[Loss] depth_loss : %.5f, j3d_loss : %.5f, j2d_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                 eval_loss_dict['depth_loss'],
-                # eval_loss_dict['j3d_loss'], 
-                0.0,
+                eval_loss_dict['j3d_loss'], 
                 eval_loss_dict['j2d_loss'],
                 eval_loss_dict['reg_loss'], 
                 eval_loss_dict['total_loss']))
@@ -327,7 +360,7 @@ class Trainer:
                     self.scheduler.step()
 
                 if self.cfg.lr_reduce:
-                    self.scheduler.step(eval_loss_dict['total_loss'])
+                    self.scheduler.step(eval_loss_dict['j3d_loss'])
 
                 cur_lr = self.optimizer.param_groups[0]['lr']
 
@@ -336,7 +369,7 @@ class Trainer:
                     prev_lr = cur_lr
 
             if eval_avg_meter.avg < best_loss:
-                best_model_dir = os.path.join(self.cfg.ckp_dir, 'best_model')
+                best_model_dir = os.path.join(self.save_path, 'best_model')
                 if not os.path.exists(best_model_dir):
                     os.makedirs(best_model_dir)
                 self.cfg.best_model = os.path.join(best_model_dir, 'S%02d_%03d_net.pt' % (self.try_num, epoch_num))
@@ -351,14 +384,22 @@ class Trainer:
         self.logger('Best model : %s\n' % self.cfg.best_model)
 
 
+
+
 if __name__ == "__main__":
-    config = {
-        'manual_seed' : 23455,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp',
+    r = range(4)
+    configs = [0 for i in range(5)]
+    num_features = 2048
+    num_param = 39
+
+    
+    configs[0] = {
+        'manual_seed' : 24657,
+        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
         # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-4,
+        'lr' : 1e-2,
         'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 10,
+        'lr_decay_step' : 1,
         'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -366,19 +407,266 @@ if __name__ == "__main__":
         'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
         # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
         'try_num' : 0,
-        'optimizer' : 'adam',
+        'optimizer' : "adam",
         'weight_decay' : 0,
-        'momentum' : 1.9,
+        'momentum' : 0.9,
         'use_multigpu' : True,
         'best_model' : None, 
-        'num_workers' : 2, 
-        'batch_size' : 10, 
-        'ckpt_term' : 50, 
-        'n_epochs' : 200,
+        'num_workers' : 4, 
+        'batch_size' : 32,
+        'ckpt_term' : 100, 
+        'n_epochs' : 5,
         'fitting' : True,
-    }
+        'depth_loss_weight': 1e5,
+        'j2d_loss_weight' : 1e3,
+        'j3d_loss_weight' :0,
+        'reg_loss_weight' : 1e3,
+        'normalize' : False,
+        'SmmothL1loss_depth' : True,
+        'MSEloss_depth' : False,
+        'num_iter' : 3,
+        'pred_scale' : False,
+        'num_fclayers' : [num_features+num_param, 
+                         int(num_features/4), 
+                         int(num_features/4),
+                         num_param],
+        'use_dropout' : [True,True,False],
+        'drop_prob' : [0.5, 0.5, 0],
+        'ac_func' : [True,True,False],
+        'pretrained': False,
+    } 
 
-    cfg = Config(**config)
-    model = HMR()
-    trainer = Trainer(cfg, model)
-    trainer.fit()
+    configs[1] = {
+        'manual_seed' : 24657,
+        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
+        # 'ckp_dir' : 'D:/sfGesture/ckp',
+        'lr' : 1e-2,
+        'lr_decay_gamma' : 0.1,
+        'lr_decay_step' : 1,
+        'lr_reduce' : False,
+        'expr_ID' : 'test1',
+        'cuda_id' : 0,
+        'dataset' : 'MSRA_HT',
+        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
+        'try_num' : 0,
+        'optimizer' : "adam",
+        'weight_decay' : 0,
+        'momentum' : 0.9,
+        'use_multigpu' : True,
+        'best_model' : None, 
+        'num_workers' : 4, 
+        'batch_size' : 32,
+        'ckpt_term' : 100, 
+        'n_epochs' : 5,
+        'fitting' : True,
+        'depth_loss_weight': 1e5,
+        'j2d_loss_weight' : 1e2,
+        'j3d_loss_weight' :0,
+        'reg_loss_weight' : 1e2,
+        'normalize' : False,
+        'SmmothL1loss_depth' : True,
+        'MSEloss_depth' : False,
+        'num_iter' : 3,
+        'pred_scale' : False,
+        'num_fclayers' : [num_features+num_param, 
+                         int(num_features/16), 
+                         int(num_features/16),
+                         num_param],
+        'use_dropout' : [True,True,False],
+        'drop_prob' : [0.5, 0.5, 0],
+        'ac_func' : [True,True,False],
+        'pretrained': False,
+    } 
+
+    configs[2] = {
+        'manual_seed' : 24657,
+        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
+        # 'ckp_dir' : 'D:/sfGesture/ckp',
+        'lr' : 1e-2,
+        'lr_decay_gamma' : 0.1,
+        'lr_decay_step' : 1,
+        'lr_reduce' : False,
+        'expr_ID' : 'test1',
+        'cuda_id' : 0,
+        'dataset' : 'MSRA_HT',
+        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
+        'try_num' : 0,
+        'optimizer' : "rms",
+        'weight_decay' : 0,
+        'momentum' : 0.9,
+        'use_multigpu' : True,
+        'best_model' : None, 
+        'num_workers' : 4, 
+        'batch_size' : 32,
+        'ckpt_term' : 100, 
+        'n_epochs' : 5,
+        'fitting' : True,
+        'depth_loss_weight': 1e5,
+        'j2d_loss_weight' : 1e4,
+        'j3d_loss_weight' :0,
+        'reg_loss_weight' : 1e4,
+        'normalize' : False,
+        'SmmothL1loss_depth' : True,
+        'MSEloss_depth' : False,
+        'num_iter' : 3,
+        'pred_scale' : False,
+        'num_fclayers' : [num_features+num_param, 
+                         int(num_features/4), 
+                         int(num_features/4),
+                         num_param],
+        'use_dropout' : [True,True,False],
+        'drop_prob' : [0.5, 0.5, 0],
+        'ac_func' : [True,True,False],
+        'pretrained': False,
+    } 
+
+    configs[3] = {
+        'manual_seed' : 24657,
+        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
+        # 'ckp_dir' : 'D:/sfGesture/ckp',
+        'lr' : 1e-2,
+        'lr_decay_gamma' : 0.1,
+        'lr_decay_step' : 1,
+        'lr_reduce' : False,
+        'expr_ID' : 'test1',
+        'cuda_id' : 0,
+        'dataset' : 'MSRA_HT',
+        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
+        'try_num' : 0,
+        'optimizer' : "sgd",
+        'weight_decay' : 0,
+        'momentum' : 0.9,
+        'use_multigpu' : True,
+        'best_model' : None, 
+        'num_workers' : 4, 
+        'batch_size' : 32,
+        'ckpt_term' : 100, 
+        'n_epochs' : 5,
+        'fitting' : True,
+        'depth_loss_weight': 1e4,
+        'j2d_loss_weight' : 1e5,
+        'j3d_loss_weight' :0,
+        'reg_loss_weight' : 1e5,
+        'normalize' : False,
+        'SmmothL1loss_depth' : True,
+        'MSEloss_depth' : False,
+        'num_iter' : 3,
+        'pred_scale' : False,
+        'num_fclayers' : [num_features+num_param, 
+                         int(num_features/4), 
+                         int(num_features/4),
+                         num_param],
+        'use_dropout' : [True,True,False],
+        'drop_prob' : [0.5, 0.5, 0],
+        'ac_func' : [True,True,False],
+        'pretrained': False,
+    } 
+
+    configs[4] = {
+        'manual_seed' : 24657,
+        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
+        # 'ckp_dir' : 'D:/sfGesture/ckp',
+        'lr' : 1e-2,
+        'lr_decay_gamma' : 0.1,
+        'lr_decay_step' : 1,
+        'lr_reduce' : False,
+        'expr_ID' : 'test1',
+        'cuda_id' : 0,
+        'dataset' : 'MSRA_HT',
+        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
+        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
+        'try_num' : 0,
+        'optimizer' : "adam",
+        'weight_decay' : 0,
+        'momentum' : 0.9,
+        'use_multigpu' : True,
+        'best_model' : None, 
+        'num_workers' : 4, 
+        'batch_size' : 32,
+        'ckpt_term' : 100, 
+        'n_epochs' : 5,
+        'fitting' : True,
+        'depth_loss_weight': 1e5,
+        'j2d_loss_weight' : 1e3,
+        'j3d_loss_weight' :0,
+        'reg_loss_weight' : 1e3,
+        'normalize' : False,
+        'SmmothL1loss_depth' : True,
+        'MSEloss_depth' : False,
+        'num_iter' : 3,
+        'pred_scale' : False,
+        'num_fclayers' : [num_features+num_param, 
+                         int(num_features/4), 
+                         int(num_features/4),
+                         num_param],
+        'use_dropout' : [True,True,False],
+        'drop_prob' : [0.5, 0.5, 0],
+        'ac_func' : [True,True,False],
+        'pretrained': False,
+    } 
+    
+    vis = set_vis()
+
+    for i in r:
+        print("=======================================================")
+        print("config%d"%i)
+        print("=======================================================")
+        configs[i]['config_num'] = i
+        configs[i]['to_mano'] = 'S2'
+        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/S2iter'
+        configs[i]['iter'] = True
+        config = configs[i]
+        cfg = Config(**config)
+        cfg.write_cfg(write_path=os.path.join('./ckp/S2iter', 'config%d.yaml'%i))
+        model = HMRS2(cfg)
+        trainer = Trainer(cfg, model, vis)
+        trainer.fit()
+
+
+    for i in r:
+        print("=======================================================")
+        print("config%d"%i)
+        print("=======================================================")
+        configs[i]['config_num'] = i
+        configs[i]['to_mano'] = 'mobilehand'
+        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/mobilehand_iter'
+        configs[i]['iter'] = True
+        config = configs[i]
+        cfg = Config(**config)
+        cfg.write_cfg(write_path=os.path.join('./ckp/mobilehand_iter', 'config%d.yaml'%i))
+        model = HMRS2(cfg)
+        trainer = Trainer(cfg, model, vis)
+        trainer.fit()
+
+    for i in r:
+        print("=======================================================")
+        print("config%d"%i)
+        print("=======================================================")
+        configs[i]['config_num'] = i
+        configs[i]['to_mano'] = 'S2'
+        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/S2_noiter'
+        config = configs[i]
+        cfg = Config(**config)
+        cfg.write_cfg(write_path=os.path.join('./ckp/S2_noiter', 'config%d.yaml'%i))
+        model = HMRS2(cfg)
+        trainer = Trainer(cfg, model, vis)
+        trainer.fit()
+    
+    for i in r:
+        print("=======================================================")
+        print("config%d"%i)
+        print("=======================================================")
+        configs[i]['config_num'] = i
+        configs[i]['to_mano'] = None
+        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/test3'
+        config = configs[i]
+        cfg = Config(**config)
+        cfg.write_cfg(write_path=os.path.join('./ckp/test3', 'config%d.yaml'%i))
+        model = HMR(cfg)
+        trainer = Trainer(cfg, model, vis)
+        trainer.fit()
+
+    vis.destroy_window()

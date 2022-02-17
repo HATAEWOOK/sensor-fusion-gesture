@@ -196,8 +196,8 @@ class ResNet(nn.Module):
             )
         self.groups = groups
         self.base_width = width_per_group
-        # self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
-        self.conv1 = nn.Conv2d(1, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+        # self.conv1 = nn.Conv2d(1, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -279,10 +279,10 @@ class ResNet(nn.Module):
         x = self.layer4(x) #[bs, 2048, 7, 7]
 
         x = self.avgpool(x) #[bs, 2048, 1, 1]
-        x = torch.flatten(x, 1) #[bs, 2048]
+        # x = torch.flatten(x, 1) #[bs, 2048]
         # Note: Comment off the classifier as #바꿀
-        # for MobileHand we only need until the image features
-        # x = self.fc(x) 
+        
+        x = self.fc(x) 
 
         return x
 

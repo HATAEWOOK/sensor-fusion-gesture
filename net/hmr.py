@@ -3,7 +3,6 @@ Network for hand rotation using mano hand model
 Input : RGB(? x ?) temp 224*224
 Output : rvec(3)
 """
-from cmath import nan
 import numpy as np
 import torch
 import torch.nn as nn
@@ -19,6 +18,12 @@ import utils.utils_mobilenet_v3 as utils_mobilenet_v3 #tmep
 from utils.resnet import resnet152 
 from utils.train_utils import orthographic_proj_withz as proj
 
+class Identity(nn.Module):
+    def __init__(self):
+        super(Identity, self).__init__()
+        
+    def forward(self, x):
+        return torch.flatten(x,1)
 
 
 class Regressor(LinearModel):
@@ -49,7 +54,7 @@ class Regressor(LinearModel):
         return params
 
 class HMR(nn.Module):
-    def __init__(self):
+    def __init__(self, cfg):
         super(HMR, self).__init__()
 
         # Number of parameters to be regressed
@@ -61,25 +66,29 @@ class HMR(nn.Module):
         # Load encoder 
         # self.encoder = utils_mobilenet_v3.mobilenetv3_small() # MobileNetV3
         # num_features = 576
-        self.encoder = resnet152() # ResNet-152
+        if cfg.pretrained:
+            self.encoder = resnet152(pretrained=True)
+        else:
+            self.encoder = resnet152()
+        
+        self.encoder.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.encoder.fc = Identity()
+
         num_features = 2048
         
         # Load iterative regressor
         self.regressor = Regressor(
-            fc_layers  =[num_features+self.num_param, 
-                         int(num_features/2), 
-                         int(num_features/2),
-                         int(num_features/2),
-                         self.num_param],
-            use_dropout=[True,True,True,False], 
-            drop_prob  =[0.5, 0.5, 0.5, 0], 
-            use_ac_func=[True,True,True,False],
+            fc_layers  =cfg.num_fclayers,
+            use_dropout=cfg.use_dropout, 
+            drop_prob  =cfg.drop_prob, 
+            use_ac_func=cfg.ac_func,
             num_param  =self.num_param,
-            num_iters  =3,
+            num_iters  =cfg.num_iter,
             max_batch_size=self.max_batch_size)
 
         # Load MANO hand model layer
         self.mano = MANO()
+        self.cfg = cfg
 
 
     def compute_results(self, param):
@@ -95,24 +104,26 @@ class HMR(nn.Module):
         # rvec = torch.tanh(rvec)*np.pi
         vert, joint = self.mano(beta, pose, rvec)
         faces = self.mano.F
-        faces = torch.tensor(faces).cuda()
-        # Convert from m to mm
+        faces = torch.tensor(faces)
+        # # Convert from m to mm
         vert *= 1000.0
         joint *= 1000.0
 
-        # vert *= scale.unsqueeze(1).unsqueeze(2)
-        # joint *=scale.unsqueeze(1).unsqueeze(2)
+        if self.cfg.pred_scale:
+            vert[:,:,:2] = vert[:,:,:2]*scale.unsqueeze(1).unsqueeze(2) + trans.unsqueeze(1)
+            joint[:,:,:2] = joint[:,:,:2]*scale.unsqueeze(1).unsqueeze(2) + trans.unsqueeze(1)
+            keypt = joint[:,:,:2] 
+        else:
+        # Project 3D joints to 2D image using weak perspective projection 
+        # only consider x and y axis so does not rely on camera intrinsic
+        # [bs,21,2] * [bs,1,1] + [bs,1,2]
+            keypt = joint[:,:,:2] * scale.unsqueeze(1).unsqueeze(2) + trans.unsqueeze(1)
 
         # For STB dataset joint 0 is at palm center instead of wrist
         # Use half the distance between wrist and middle finger MCP as palm center (root joint)
         if self.stb_dataset:
             joint[:,0,:] = (joint[:,0,:] + joint[:,9,:])/2.0
         
-        # Project 3D joints to 2D image using weak perspective projection 
-        # only consider x and y axis so does not rely on camera intrinsic
-        # [bs,21,2] * [bs,1,1] + [bs,1,2]
-        keypt = joint[:,:,:2] * scale.unsqueeze(1).unsqueeze(2) + trans.unsqueeze(1)
-
         # if self.stb_dataset: # For publication to generate images for STB dataset
         # if not self.stb_dataset:
         vert  = vert  - joint[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP

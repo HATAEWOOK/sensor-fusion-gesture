@@ -68,6 +68,7 @@ class Dataload(Dataset):
             sample['com'] = torch.FloatTensor(com)
             sample['name'] = self.hand_dataset.get_filename(idx)
             sample['j3d'] = self.totensor(self.hand_dataset.get_j3d(idx)).float()
+            sample['j2d'] = self.totensor(self.hand_dataset.get_j2d(idx)).float()
         return sample
     
     def __getitem__(self, idx):
@@ -123,6 +124,11 @@ class MSRA_HT:
         j3d = np.delete(j3d, slice(21,25), axis=0)
         j3d = j3d - j3d[9,:]
         return j3d
+
+    def get_j2d(self, idx):
+        j3d = self.get_j3d(idx)
+        j2d = j3d[:,:2]
+        return j2d
 
     def __len__(self):
         return len(self.filenames)

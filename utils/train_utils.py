@@ -152,6 +152,7 @@ def mklogger(log_path, mode = 'w'):
         sh.setFormatter(formatter)
         logger.addHandler(sh)
 
+        log_path = os.path.join(log_path, str(datetime.now().replace(microsecond=0)) + ".log") 
         fh = logging.FileHandler('%s'%log_path, mode=mode)
         fh.setFormatter(formatter)
         logger.addHandler(fh)
@@ -200,7 +201,7 @@ class Mano2depth():
                 self.cy = self.h / 2 - 0.5
                 self.cube = [180,180,180]
                 self.verts = verts
-                self.faces = np.asarray(faces.detach().cpu())
+                self.faces = faces.detach().cpu()
                 self.bs = verts.shape[0]
                 
         def mesh2depth(self, vis, path = None):
@@ -222,8 +223,8 @@ class Mano2depth():
                         depth = np.asarray(depth)
                         if np.max(depth) != 0:
                                 depth /= np.max(depth)
-                        else:   
-                                print("depth is not captured", np.min(depth), np.max(depth))
+                        # else:   
+                        #         print("depth is not captured", np.min(depth), np.max(depth))
                         # hd = HandDetector(depth, self.fx, self.fy)
                         # depth_resize, com = hd.croppedNormDepth()
                         depth_resize = cv2.resize(depth, (224,224))
@@ -259,20 +260,58 @@ def orthographic_proj_withz(X, trans, scale, offset_z=0.):
     proj_z = proj[:, :, 2, None] + offset_z
     return torch.cat((proj_xy, proj_z), 2)
 
-def regularizer_loss(ang, beta):
+def regularizer_loss(ang, theta=None):
         ang = ang.detach().cpu()
-        beta = beta.detach().cpu()
         mano = MANO()
         limits = []
 
         for i in range(ang.shape[0]):
-                limit = mano.compute_ang_limit(ang[i])
+                if theta is None:
+                        limit = mano.compute_ang_limit(ang[i])
+                else:
+                        limit = mano.compute_pose_limit(ang[i])
                 limits.append(limit.detach())
         
-        beta_norm = np.linalg.norm(beta.numpy(), axis=1, ord = 2) ** 2
-        loss = np.asarray(limits) + beta_norm
+        loss = np.asarray(limits)
 
         return np.mean(loss)
+
+def normalize(values, dim = '3d'):
+    values = values.detach()
+
+    for i in range(values.shape[0]):
+        if dim == '3d':
+            meanx, meany, meanz = torch.mean(values[i,:,0]),torch.mean(values[i,:,1]),torch.mean(values[i,:,2])
+            stdx, stdy, stdz = torch.std(values[i,:,0]),torch.std(values[i,:,1]),torch.std(values[i,:,2])
+
+            if stdx == 0: 
+                values[i,:,0] = 0 
+            else: 
+                values[i,:,0]=(values[i,:,0] - meanx) / stdx
+            if stdy == 0: 
+                values[i,:,1] = 0 
+            else: 
+                values[i,:,1]=(values[i,:,1] - meany) / stdy
+            if stdz == 0: 
+                values[i,:,2] = 0 
+            else: 
+                values[i,:,2]=(values[i,:,2] - meanz) / stdz
+
+
+        if dim == '2d':
+            meanx, meany = torch.mean(values[i,:,0]),torch.mean(values[i,:,1])
+            stdx, stdy = torch.std(values[i,:,0]),torch.std(values[i,:,1])
+
+            if stdx == 0: 
+                values[i,:,0] = 0 
+            else: 
+                values[i,:,0]=(values[i,:,0] - meanx) / stdx
+            if stdy == 0: 
+                values[i,:,1] = 0 
+            else: 
+                values[i,:,1]=(values[i,:,1] - meany) / stdy
+
+    return values
 
 
 if __name__ == "__main__":

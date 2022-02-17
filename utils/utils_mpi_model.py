@@ -172,7 +172,8 @@ class MANO(nn.Module):
             [-30,20], [-10,90], [-1,90], [-1,90], # Little
             # x-axis, y-axis  , z-axis
             # [-45,140], [-45,45], [-45,45], # Thumb TM
-            [-45,45], [-45,45], [-45,45], # Thumb TM
+            # [-45,45], [-45,45], [-45,45], # Thumb TM
+            [-1,45], [-45,45], [-45,45], # Thumb TM
             [-45, 45], [-45,45], [-45,45], # Thumb MCP
             [-1 , 90]])                    # Thumb IP flex/ext
         # Convert degrees to radians
@@ -256,8 +257,17 @@ class MANO(nn.Module):
 
     def compute_ang_limit(self, ang):
         # ReLU(x)=max(0,x)
-        min_ = self.ReLU(self.alim_[:,0]-ang)
+        min_ = self.ReLU(self.alim_[:,0]-ang) #[23,1] - [23]
         max_ = self.ReLU(ang-self.alim_[:,1])
+
+        return torch.sum(min_) + torch.sum(max_)
+
+    def compute_pose_limit(self, theta):
+        # ReLU(x)=max(0,x)
+        bs = theta.shape[0]
+        theta = theta.view(-1,3) #[15,3]
+        min_ = self.ReLU(self.plim_[:,:,0]-theta) #[15,3,1] - [15,3]
+        max_ = self.ReLU(theta-self.plim_[:,:,1]) 
 
         return torch.sum(min_) + torch.sum(max_)
 
