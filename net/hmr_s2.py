@@ -452,7 +452,7 @@ class PoseHand(nn.Module):
             joints = joints - joints[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
             keypt = keypt - keypt[:,9,:].unsqueeze(1)
 
-            return keypt, joints, verts, theta, faces, torch.cat([scale, trans, rot, beta, theta], dim=1)
+            return keypt, joints, verts, theta, faces[0], torch.cat([scale, trans, rot, beta, theta], dim=1)
 
         #return joints, verts, faces, theta, beta, scale, trans, rot, tsa_poses
         # return joints, verts, faces, theta, beta, scale, trans, rot, tsa_poses

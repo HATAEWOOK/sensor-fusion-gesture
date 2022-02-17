@@ -615,22 +615,6 @@ if __name__ == "__main__":
         print("config%d"%i)
         print("=======================================================")
         configs[i]['config_num'] = i
-        configs[i]['to_mano'] = 'S2'
-        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/S2iter'
-        configs[i]['iter'] = True
-        config = configs[i]
-        cfg = Config(**config)
-        cfg.write_cfg(write_path=os.path.join('./ckp/S2iter', 'config%d.yaml'%i))
-        model = HMRS2(cfg)
-        trainer = Trainer(cfg, model, vis)
-        trainer.fit()
-
-
-    for i in r:
-        print("=======================================================")
-        print("config%d"%i)
-        print("=======================================================")
-        configs[i]['config_num'] = i
         configs[i]['to_mano'] = 'mobilehand'
         configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/mobilehand_iter'
         configs[i]['iter'] = True
