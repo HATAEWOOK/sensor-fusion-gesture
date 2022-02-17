@@ -21,7 +21,7 @@ from utils.train_utils import Data_preprocess, Mano2depth, set_vis
 from utils.hand_detector import HandDetector
 from utils.utils_mpi_model import MANO
 
-def get_dataset(dat_name, base_path=None, queries = None, use_cache=True, train=False, split=None):
+def get_dataset(dat_name, base_path=None, queries = None, vis=None, use_cache=True, train=False, split=None):
     if dat_name == 'MSRA_HT':
         hand_dataset = MSRA_HT(
             base_path = base_path
@@ -29,8 +29,9 @@ def get_dataset(dat_name, base_path=None, queries = None, use_cache=True, train=
 
     if dat_name == 'synthetic':
         hand_dataset = SYN_MANO(
-            data_size = 5000, 
-            save_path = base_path
+            data_size = 5, 
+            save_path = base_path,
+            vis = vis,
         )
 
 
@@ -142,26 +143,31 @@ class MSRA_HT:
         return len(self.filenames)
 
 class SYN_MANO:
-    def __init__(self, data_size = 5000, save_path = None):
+    def __init__(self, data_size = 5000, save_path = None, vis = None):
         self.data_size = data_size
         self.save_path = save_path 
-        self.load_dataset()
+        mano = MANO()
+        plim = mano.plim_
+        self.load_dataset(plim)
         self.name = 'SYN_MANO'
-        self.mano = MANO()
-        self.vis = set_vis()
+        self.vis = vis
+        self.mano = mano
 
         
-    def load_dataset(self):
+    def load_dataset(self, plim):
         params = []
         for _ in range(self.data_size):
             scale = torch.randn(1)
             trans = torch.randn(2)
             # rot = torch.tensor([np.random.normal(np.pi/2, 1), np.random.normal(-np.pi/2, 1), np.random.normal(np.pi/2, 1)])
+            # rot = torch.tensor([np.random.normal(0, 1), np.random.normal(-np.pi/2, 1), np.random.normal(0, 1)])
             rot = torch.randn(3)
             beta = torch.randn(10)
             # theta = torch.randn(45) #ang 23
-            plim = self.mano.plim
-            theta = torch.zeros([15,3])
+            plim = plim.view(45,-1)
+            theta = torch.zeros([45])
+            for i in range(len(theta)):
+                theta[i] = np.random.uniform(plim[i,0], plim[i,1])
 
             params.append(torch.cat((scale, trans, rot, beta, theta)))
 
@@ -196,11 +202,9 @@ class SYN_MANO:
         return self.data_size
 
 if __name__ == '__main__':
-    dat = get_dataset('synthetic')
+    dat = get_dataset('synthetic', vis=set_vis())
     sample = next(iter(dat))
     depth = sample['depth']
-    params = sample['params']
-
     plt.figure()
     plt.imshow(depth.squeeze())
     plt.show()

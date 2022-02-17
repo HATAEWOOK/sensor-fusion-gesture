@@ -104,7 +104,7 @@ class HMR(nn.Module):
         # rvec = torch.tanh(rvec)*np.pi
         vert, joint = self.mano(beta, pose, rvec)
         faces = self.mano.F
-        faces = torch.tensor(faces)
+        faces = torch.tensor(faces).cuda()
         # # Convert from m to mm
         vert *= 1000.0
         joint *= 1000.0
