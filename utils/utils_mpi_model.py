@@ -349,7 +349,7 @@ if __name__ == '__main__':
     bs = 1 # Batchsize
     beta = torch.zeros([bs,10], dtype=torch.float32)
     # rvec = torch.zeros([bs,3], dtype=torch.float32)
-    rvec = torch.tensor([[np.pi/2,-np.pi,np.pi/2]], dtype=torch.float32)
+    rvec = torch.tensor([[-np.pi/2,np.pi/2,-np.pi/2]], dtype=torch.float32)
     tvec = torch.zeros([bs,3], dtype=torch.float32)
 
     model = MANO()
@@ -359,22 +359,6 @@ if __name__ == '__main__':
     vertices, joints = model.forward(beta, pose, rvec, tvec)
     print('vertices', vertices.shape, vertices.dtype) # torch.Size([10, 778, 3]) torch.float32
     print('joints', joints.shape, joints.dtype)       # torch.Size([10, 21, 3]) torch.float32
-
-
-
-    w = 320
-    h = 240
-    fx = fy = 241.42
-    cx = w / 2 - 0.5
-    cy = h / 2 - 0.5
-    cube = [200,200,200]
-    vis = o3d.visualization.Visualizer()
-    vis.create_window(visible = False, width = w, height = h)
-    vc = vis.get_view_control()
-    camera_param = vc.convert_to_pinhole_camera_parameters()
-    camera_param.intrinsic.set_intrinsics(w, h, fx, fy, w / 2 - 0.5,  h / 2 - 0.5)
-    vc.convert_from_pinhole_camera_parameters(camera_param)
-    param = vc.convert_to_pinhole_camera_parameters().intrinsic.intrinsic_matrix
 
     ########################################
     ### Quick visualization using Open3D ###
@@ -387,9 +371,4 @@ if __name__ == '__main__':
     mesh.triangles = o3d.utility.Vector3iVector(model.F)
     mesh.compute_vertex_normals()
     # Draw wireframe
-    vis.add_geometry(mesh)
-    depth = vis.capture_depth_float_buffer(True)
-    # o3d.visualization.draw_geometries([mesh, mesh_frame])
-    plt.figure()
-    plt.imshow(depth)
-    plt.show()
+    o3d.visualization.draw_geometries([mesh, mesh_frame])

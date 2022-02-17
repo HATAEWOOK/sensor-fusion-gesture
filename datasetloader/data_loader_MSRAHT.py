@@ -17,22 +17,27 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import struct
 
-from utils.train_utils import Data_preprocess
+from utils.train_utils import Data_preprocess, Mano2depth, set_vis
 from utils.hand_detector import HandDetector
+from utils.utils_mpi_model import MANO
 
-def get_dataset(dat_name, base_path, queries = None, use_cache=True, train=False, split=None):
+def get_dataset(dat_name, base_path=None, queries = None, use_cache=True, train=False, split=None):
     if dat_name == 'MSRA_HT':
         hand_dataset = MSRA_HT(
-            base_path = base_path,
+            base_path = base_path
         )
-        sides = 'right'
+
+    if dat_name == 'synthetic':
+        hand_dataset = SYN_MANO(
+            data_size = 5000, 
+            save_path = base_path
+        )
+
 
     dataset = Dataload(
         dat_name,
         hand_dataset,
         queries=queries,
-        sides = sides,
-        is_train = train,
     )
 
     return dataset
@@ -40,12 +45,10 @@ def get_dataset(dat_name, base_path, queries = None, use_cache=True, train=False
 
 
 class Dataload(Dataset):
-    def __init__(self, dat_name, hand_dataset, queries=None, sides = None, is_train = 'right', ):
+    def __init__(self, dat_name, hand_dataset, queries=None,):
         self.dat_name = dat_name
         self.hand_dataset = hand_dataset
         self.queries = queries
-        self.sides = sides
-        self.is_train = is_train
         self.totensor = torchvision.transforms.ToTensor()
         # JOINT_NUM = 21
         self.fx = self.fy = 241.42
@@ -69,6 +72,11 @@ class Dataload(Dataset):
             sample['name'] = self.hand_dataset.get_filename(idx)
             sample['j3d'] = self.totensor(self.hand_dataset.get_j3d(idx)).float()
             sample['j2d'] = self.totensor(self.hand_dataset.get_j2d(idx)).float()
+        
+        if self.dat_name == 'synthetic':
+            sample['depth'] = self.hand_dataset.get_depth(idx)
+            sample['params'] = self.hand_dataset.get_params(idx)
+
         return sample
     
     def __getitem__(self, idx):
@@ -133,109 +141,66 @@ class MSRA_HT:
     def __len__(self):
         return len(self.filenames)
 
+class SYN_MANO:
+    def __init__(self, data_size = 5000, save_path = None):
+        self.data_size = data_size
+        self.save_path = save_path 
+        self.load_dataset()
+        self.name = 'SYN_MANO'
+        self.mano = MANO()
+        self.vis = set_vis()
+
+        
+    def load_dataset(self):
+        params = []
+        for _ in range(self.data_size):
+            scale = torch.randn(1)
+            trans = torch.randn(2)
+            # rot = torch.tensor([np.random.normal(np.pi/2, 1), np.random.normal(-np.pi/2, 1), np.random.normal(np.pi/2, 1)])
+            rot = torch.randn(3)
+            beta = torch.randn(10)
+            # theta = torch.randn(45) #ang 23
+            plim = self.mano.plim
+            theta = torch.zeros([15,3])
+
+            params.append(torch.cat((scale, trans, rot, beta, theta)))
+
+        self.params = params
+    
+    def get_depth(self, idx):
+        verts, faces = self.to_mano(self.params[idx])
+        m2d = Mano2depth(verts, faces)
+        depth = m2d.mesh2depth(self.vis)
+        return depth
+
+    def get_params(self, idx):
+        return self.params[idx]
+
+    def to_mano(self, params):
+        scale = params[0].unsqueeze(0)
+        trans = params[1:3].unsqueeze(0)
+        rot = params[3:6].unsqueeze(0)
+        beta = params[6:16].unsqueeze(0)
+        theta = params[16:61].view(-1,3).unsqueeze(0)
+
+
+        verts, _ = self.mano(beta, theta, rot)
+        faces = torch.tensor(self.mano.F)
+        verts *= 1000.0
+
+        # verts[:,:,:2] = verts[:,:,:2]*scale.unsqueeze(0).unsqueeze(1) + trans.unsqueeze(0)
+
+        return verts, faces
+
+    def __len__(self):
+        return self.data_size
+
 if __name__ == '__main__':
-    import open3d as o3d
-    from utils.utils_mpi_model import MANO
-    from torch.utils.data import DataLoader
+    dat = get_dataset('synthetic')
+    sample = next(iter(dat))
+    depth = sample['depth']
+    params = sample['params']
 
-    while False:
-    # # # path = '/root/Dataset/cvpr'
-    # query = ['processed', 'com', 'cropped']
-
-        kwargs = {
-            'num_workers' : 2,
-            'batch_size' : 1,
-            'shuffle' : False,
-            'drop_last' : True,
-            }
-
-        tmp = get_dataset(
-            'MSRA_HT',
-            path,
-        )
-        tdataloader = DataLoader(tmp, **kwargs)
-
-        for b_idx, (sample) in enumerate(tdataloader):
-            dpt = sample['processed'].squeeze()
-            fig = plt.figure(1, figsize=[6, 6])
-            plt.imshow(dpt, cmap='gray')
-            plt.axis('off')
-            path = os.path.join('D:/sfGesture/target', '%5d.png' % (b_idx))
-            fig.savefig(path)
-            plt.close(fig)    
-        
-        sample = next(iter(tdataloader))
-        dpt = sample['processed']
-        plt.figure()
-        plt.imshow(dpt)
-        plt.show()
-        
-        sample = next(iter(train_da))
-        dpt = sample['processed']
-        print(dpt[0,0,0])
-        w = 320
-        h = 240
-        fx = fy = 241.42
-        cx = w / 2 - 0.5
-        cy = h / 2 - 0.5
-        cube = [180,180,180]
-        dp = Data_preprocess(21, fx, fy, cx, cy, cube)
-
-        bs = 1 # Batchsize
-        beta = torch.zeros([bs,10], dtype=torch.float32)
-        rvec = torch.zeros([bs,3], dtype=torch.float32)
-        tvec = torch.zeros([bs,3], dtype=torch.float32)
-        pose = torch.zeros([bs,15,3], dtype=torch.float32)
-        ppca = torch.zeros([bs,45], dtype=torch.float32)
-        beta = torch.randn(bs,10)
-        rvec = torch.randn(bs,3)
-        tvec = torch.randn(bs,3)
-        pose = torch.randn(bs,15,3)
-        ppca = torch.randn(bs,45)
-        mano = MANO()
-        verts, joints_mano = mano(beta, pose, rvec, tvec)
-        faces = mano.F
-        
-
-        train_loader = torch.utils.data.DataLoader(train_da, batch_size=10,shuffle = True)
-        test_loader = torch.utils.data.DataLoader(test_da, batch_size=10,shuffle = True)
-
-
-
-        JOINT_NUM = 21
-        fx = fy = 241.42
-        cx, cy = 160, 120
-        cube = [200,200,200]
-        dp = Data_preprocess(JOINT_NUM, fx, fy, cx, cy, cube)
-
-        tmp = MSRA_HT(base_path = path)
-
-        dpt = tmp.get_depth(816)
-        dpt_train, dpt_crop, com = dp.preprocess_depth(dpt)
-        print(type(dpt_train), type(dpt_crop), type(com))
-
-        fig = plt.figure(1)
-        ax1 = fig.add_subplot(221)
-        ax2 = fig.add_subplot(222)
-        ax3 = fig.add_subplot(223)
-
-        ax1.imshow(dpt)
-        ax2.imshow(dpt_train)
-        ax3.imshow(dpt_crop)
-        print(com)
-        plt.show()
-
-        plt.imshow(dpt)
-        plt.show()
-
-        filenames = []
-        i = 1
-        dir = os.listdir(os.path.join(path, 'Subject%d' % i))
-        print(len(dir))
-        dir = [file for file in dir if file.endswith(".bin")]
-        print(dir[5])
-        dir = [os.path.join(path, 'Subject%d' % i, file) for file in dir]
-        print(dir[5])
-        depth = np.fromfile(dir[5], dtype=np.float32)
-        depth = depth.reshape(240,320)
-        print(depth.shape)
+    plt.figure()
+    plt.imshow(depth.squeeze())
+    plt.show()
