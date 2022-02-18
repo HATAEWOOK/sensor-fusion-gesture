@@ -132,6 +132,13 @@ class HMR(nn.Module):
             
         return keypt, joint, vert, ang, faces # [bs,21,2], [bs,21,3], [bs,778,3], [bs,23]
 
+    def get_theta_param(self, params):
+        ang = params[:, 16:].contiguous()
+        pose = self.mano.convert_ang_to_pose(ang)
+        theta_param = torch.cat((params[:,:16], pose), dim=1)
+
+        return theta_param
+
 
     def forward(self, inputs, evaluation=True, get_feature=False):
         features = self.encoder(inputs)

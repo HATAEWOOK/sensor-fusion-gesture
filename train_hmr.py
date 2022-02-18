@@ -397,9 +397,9 @@ if __name__ == "__main__":
         'manual_seed' : 24657,
         'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
         # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-2,
+        'lr' : 1e-4,
         'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 1,
+        'lr_decay_step' : 5,
         'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -408,19 +408,19 @@ if __name__ == "__main__":
         # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
         'try_num' : 0,
         'optimizer' : "adam",
-        'weight_decay' : 0,
+        'weight_decay' : 1e-5,
         'momentum' : 0.9,
         'use_multigpu' : True,
         'best_model' : None, 
         'num_workers' : 4, 
         'batch_size' : 32,
         'ckpt_term' : 100, 
-        'n_epochs' : 5,
+        'n_epochs' : 10,
         'fitting' : True,
         'depth_loss_weight': 1e5,
-        'j2d_loss_weight' : 1e3,
+        'j2d_loss_weight' : 1e1,
         'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1e3,
+        'reg_loss_weight' : 1,
         'normalize' : False,
         'SmmothL1loss_depth' : True,
         'MSEloss_depth' : False,
@@ -440,9 +440,9 @@ if __name__ == "__main__":
         'manual_seed' : 24657,
         'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
         # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-2,
+        'lr' : 1e-4,
         'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 1,
+        'lr_decay_step' : 5,
         'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -451,62 +451,19 @@ if __name__ == "__main__":
         # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
         'try_num' : 0,
         'optimizer' : "adam",
-        'weight_decay' : 0,
+        'weight_decay' : 1e-1,
         'momentum' : 0.9,
         'use_multigpu' : True,
         'best_model' : None, 
         'num_workers' : 4, 
         'batch_size' : 32,
         'ckpt_term' : 100, 
-        'n_epochs' : 5,
+        'n_epochs' : 10,
         'fitting' : True,
         'depth_loss_weight': 1e5,
-        'j2d_loss_weight' : 1e2,
+        'j2d_loss_weight' : 1e1,
         'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1e2,
-        'normalize' : False,
-        'SmmothL1loss_depth' : True,
-        'MSEloss_depth' : False,
-        'num_iter' : 3,
-        'pred_scale' : False,
-        'num_fclayers' : [num_features+num_param, 
-                         int(num_features/16), 
-                         int(num_features/16),
-                         num_param],
-        'use_dropout' : [True,True,False],
-        'drop_prob' : [0.5, 0.5, 0],
-        'ac_func' : [True,True,False],
-        'pretrained': False,
-    } 
-
-    configs[2] = {
-        'manual_seed' : 24657,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
-        # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-2,
-        'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 1,
-        'lr_reduce' : False,
-        'expr_ID' : 'test1',
-        'cuda_id' : 0,
-        'dataset' : 'MSRA_HT',
-        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
-        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
-        'try_num' : 0,
-        'optimizer' : "rms",
-        'weight_decay' : 0,
-        'momentum' : 0.9,
-        'use_multigpu' : True,
-        'best_model' : None, 
-        'num_workers' : 4, 
-        'batch_size' : 32,
-        'ckpt_term' : 100, 
-        'n_epochs' : 5,
-        'fitting' : True,
-        'depth_loss_weight': 1e5,
-        'j2d_loss_weight' : 1e4,
-        'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1e4,
+        'reg_loss_weight' : 1,
         'normalize' : False,
         'SmmothL1loss_depth' : True,
         'MSEloss_depth' : False,
@@ -520,15 +477,15 @@ if __name__ == "__main__":
         'drop_prob' : [0.5, 0.5, 0],
         'ac_func' : [True,True,False],
         'pretrained': False,
-    } 
+    }
 
-    configs[3] = {
+    configs[2] = {
         'manual_seed' : 24657,
         'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
         # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-2,
+        'lr' : 1e-4,
         'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 1,
+        'lr_decay_step' : 5,
         'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -537,62 +494,19 @@ if __name__ == "__main__":
         # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
         'try_num' : 0,
         'optimizer' : "sgd",
-        'weight_decay' : 0,
+        'weight_decay' : 1e-5,
         'momentum' : 0.9,
         'use_multigpu' : True,
         'best_model' : None, 
         'num_workers' : 4, 
         'batch_size' : 32,
         'ckpt_term' : 100, 
-        'n_epochs' : 5,
-        'fitting' : True,
-        'depth_loss_weight': 1e4,
-        'j2d_loss_weight' : 1e5,
-        'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1e5,
-        'normalize' : False,
-        'SmmothL1loss_depth' : True,
-        'MSEloss_depth' : False,
-        'num_iter' : 3,
-        'pred_scale' : False,
-        'num_fclayers' : [num_features+num_param, 
-                         int(num_features/4), 
-                         int(num_features/4),
-                         num_param],
-        'use_dropout' : [True,True,False],
-        'drop_prob' : [0.5, 0.5, 0],
-        'ac_func' : [True,True,False],
-        'pretrained': False,
-    } 
-
-    configs[4] = {
-        'manual_seed' : 24657,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
-        # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-2,
-        'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 1,
-        'lr_reduce' : False,
-        'expr_ID' : 'test1',
-        'cuda_id' : 0,
-        'dataset' : 'MSRA_HT',
-        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
-        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
-        'try_num' : 0,
-        'optimizer' : "adam",
-        'weight_decay' : 0,
-        'momentum' : 0.9,
-        'use_multigpu' : True,
-        'best_model' : None, 
-        'num_workers' : 4, 
-        'batch_size' : 32,
-        'ckpt_term' : 100, 
-        'n_epochs' : 5,
+        'n_epochs' : 10,
         'fitting' : True,
         'depth_loss_weight': 1e5,
-        'j2d_loss_weight' : 1e3,
+        'j2d_loss_weight' : 1e1,
         'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1e3,
+        'reg_loss_weight' : 1,
         'normalize' : False,
         'SmmothL1loss_depth' : True,
         'MSEloss_depth' : False,
@@ -606,38 +520,9 @@ if __name__ == "__main__":
         'drop_prob' : [0.5, 0.5, 0],
         'ac_func' : [True,True,False],
         'pretrained': False,
-    } 
-    
+    }
+
     vis = set_vis()
-
-    for i in r:
-        print("=======================================================")
-        print("config%d"%i)
-        print("=======================================================")
-        configs[i]['config_num'] = i
-        configs[i]['to_mano'] = 'mobilehand'
-        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/mobilehand_iter'
-        configs[i]['iter'] = True
-        config = configs[i]
-        cfg = Config(**config)
-        cfg.write_cfg(write_path=os.path.join('./ckp/mobilehand_iter', 'config%d.yaml'%i))
-        model = HMRS2(cfg)
-        trainer = Trainer(cfg, model, vis)
-        trainer.fit()
-
-    for i in r:
-        print("=======================================================")
-        print("config%d"%i)
-        print("=======================================================")
-        configs[i]['config_num'] = i
-        configs[i]['to_mano'] = 'S2'
-        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/S2_noiter'
-        config = configs[i]
-        cfg = Config(**config)
-        cfg.write_cfg(write_path=os.path.join('./ckp/S2_noiter', 'config%d.yaml'%i))
-        model = HMRS2(cfg)
-        trainer = Trainer(cfg, model, vis)
-        trainer.fit()
     
     for i in r:
         print("=======================================================")
@@ -645,7 +530,7 @@ if __name__ == "__main__":
         print("=======================================================")
         configs[i]['config_num'] = i
         configs[i]['to_mano'] = None
-        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/test3'
+        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/weight_decay'
         config = configs[i]
         cfg = Config(**config)
         cfg.write_cfg(write_path=os.path.join('./ckp/test3', 'config%d.yaml'%i))

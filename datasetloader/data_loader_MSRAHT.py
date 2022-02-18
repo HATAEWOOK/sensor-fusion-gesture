@@ -29,7 +29,7 @@ def get_dataset(dat_name, base_path=None, queries = None, vis=None, use_cache=Tr
 
     if dat_name == 'synthetic':
         hand_dataset = SYN_MANO(
-            data_size = 5, 
+            data_size = 10000, 
             save_path = base_path,
             vis = vis,
         )
@@ -177,9 +177,11 @@ class SYN_MANO:
         verts, faces = self.to_mano(self.params[idx])
         m2d = Mano2depth(verts, faces)
         depth = m2d.mesh2depth(self.vis)
+        torch.save(depth, os.path.join(self.save_path, '%d_depth.pt'%idx))
         return depth
 
     def get_params(self, idx):
+        np.savetxt(os.path.join(self.save_path, '%d_params.txt'%idx), self.params[idx].numpy())
         return self.params[idx]
 
     def to_mano(self, params):
@@ -188,7 +190,6 @@ class SYN_MANO:
         rot = params[3:6].unsqueeze(0)
         beta = params[6:16].unsqueeze(0)
         theta = params[16:61].view(-1,3).unsqueeze(0)
-
 
         verts, _ = self.mano(beta, theta, rot)
         faces = torch.tensor(self.mano.F)
