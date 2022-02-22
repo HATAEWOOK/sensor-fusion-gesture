@@ -135,7 +135,7 @@ class HMR(nn.Module):
     def get_theta_param(self, params):
         ang = params[:, 16:].contiguous()
         pose = self.mano.convert_ang_to_pose(ang)
-        theta_param = torch.cat((params[:,:16], pose), dim=1)
+        theta_param = torch.cat((params[:,:16], pose.view(-1,45)), dim=1)
 
         return theta_param
 

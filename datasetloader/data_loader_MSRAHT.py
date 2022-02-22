@@ -1,5 +1,6 @@
 from ast import expr_context
 from operator import indexOf
+from pkgutil import get_data
 from shutil import ExecError
 import sys
 sys.path.append('.')
@@ -28,10 +29,8 @@ def get_dataset(dat_name, base_path=None, queries = None, vis=None, use_cache=Tr
         )
 
     if dat_name == 'synthetic':
-        hand_dataset = SYN_MANO(
-            data_size = 10000, 
-            save_path = base_path,
-            vis = vis,
+        hand_dataset = SYN_MANO_loader(
+            base_path=base_path,
         )
 
 
@@ -77,6 +76,7 @@ class Dataload(Dataset):
         if self.dat_name == 'synthetic':
             sample['depth'] = self.hand_dataset.get_depth(idx)
             sample['params'] = self.hand_dataset.get_params(idx)
+            sample['name'] = idx
 
         return sample
     
@@ -177,12 +177,17 @@ class SYN_MANO:
         verts, faces = self.to_mano(self.params[idx])
         m2d = Mano2depth(verts, faces)
         depth = m2d.mesh2depth(self.vis)
-        torch.save(depth, os.path.join(self.save_path, '%d_depth.pt'%idx))
         return depth
 
     def get_params(self, idx):
-        np.savetxt(os.path.join(self.save_path, '%d_params.txt'%idx), self.params[idx].numpy())
+        # np.savetxt(os.path.join(self.save_path, '%d_params.txt'%idx), self.params[idx].numpy())
         return self.params[idx]
+
+    def generate_file(self, idx):
+        depth = self.get_depth(idx)
+        torch.save(depth, os.path.join(self.save_path, '%d_depth.pt'%idx))
+        params = self.get_params(idx)
+        torch.save(params, os.path.join(self.save_path, '%d_params.pt'%idx))
 
     def to_mano(self, params):
         scale = params[0].unsqueeze(0)
@@ -202,10 +207,46 @@ class SYN_MANO:
     def __len__(self):
         return self.data_size
 
+class SYN_MANO_loader:
+    def __init__(self, base_path = None):
+        self.base_path = base_path # /root/Dataset/synthetic/001
+        self.name = 'SYN_MANO'
+    
+    def get_depth(self, idx):
+        depth = torch.load(os.path.join(self.base_path, '%d_depth.pt'%idx))
+        return depth
+
+    def get_params(self, idx):
+        params = torch.load(os.path.join(self.base_path, '%d_params.pt'%idx))
+        return params
+
+    def __len__(self):
+        return int(len(os.listdir(self.base_path)) / 2)
+
 if __name__ == '__main__':
-    dat = get_dataset('synthetic', vis=set_vis())
-    sample = next(iter(dat))
-    depth = sample['depth']
-    plt.figure()
-    plt.imshow(depth.squeeze())
-    plt.show()
+    # from torch.utils.data import DataLoader
+    # import torch.utils
+    # dat = get_dataset('synthetic' ,base_path='/root/Dataset/synthetic/001')
+    # kwargs = {
+    #         'num_workers' : 4,
+    #         'batch_size' : 64,
+    #         'shuffle' : True,
+    #         'drop_last' : True,
+    #     }
+
+    # train_size = int(0.8*len(dat))
+    # test_size = len(dat) - train_size
+    # train_data, test_data = torch.utils.data.random_split(dat, [train_size, test_size])
+    # train_dataloader = DataLoader(train_data, **kwargs)
+    # test_dataloader = DataLoader(test_data, **kwargs)
+    # print("Data size : ",len(train_dataloader), len(test_dataloader))
+
+    # sample = next(iter(train_dataloader))
+    # print(sample['depth'].shape)
+
+    vis = set_vis()
+    dat = SYN_MANO(data_size=800, save_path = '/root/Dataset/synthetic/002', vis = vis)
+    for idx in range(len(dat)):
+        dat.generate_file(idx)
+        if (idx+1) % 10 == 0:
+            print('%d/%d'%(idx+1, len(dat)))

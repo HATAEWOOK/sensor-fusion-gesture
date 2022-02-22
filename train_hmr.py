@@ -47,7 +47,7 @@ class Trainer:
         self.logger = logger
         summary_logdir = os.path.join(self.save_path, 'summaries')
         self.swriter = SummaryWriter()
-        logger('[%s] - Started training GrabNet, experiment code %s' % (cfg.expr_ID, starttime))
+        logger('[%s] - Started training, experiment code %s' % (cfg.expr_ID, starttime))
         logger('tensorboard --logdir=%s' % summary_logdir)
         logger('Torch Version: %s\n' % torch.__version__)
         logger('Base dataset_dir is %s' % cfg.dataset_dir)
@@ -55,6 +55,8 @@ class Trainer:
 
 
         self.model = model
+        if cfg.pretrained:
+            self.load_model(model, cfg.pretrained)
         model_params = filter(lambda p: p.requires_grad, self.model.parameters())
 
         # Initialize optimizer
@@ -126,8 +128,8 @@ class Trainer:
         torch.save(self.model.module.state_dict() if isinstance(self.model, torch.nn.DataParallel) 
                     else self.model.state_dict(), self.cfg.best_model)
 
-    def _get_model(self):
-        pass
+    def load_model(self, model, pretrained):
+        model.load_state_dice(torch.load(pretrained))
 
     def load_data(self, cfg):
         '''

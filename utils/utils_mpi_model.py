@@ -342,33 +342,83 @@ class MANO(nn.Module):
 ### Simple example to test program                                          ###
 ###############################################################################
 if __name__ == '__main__':
-    import argparse
-    import open3d as o3d
-    import matplotlib.pyplot as plt
+    # import argparse
+    # import open3d as o3d
+    # import matplotlib.pyplot as plt
 
-    bs = 1 # Batchsize
-    beta = torch.zeros([bs,10], dtype=torch.float32)
-    # rvec = torch.zeros([bs,3], dtype=torch.float32)
-    rvec = torch.tensor([[-np.pi/2,np.pi/2,-np.pi/2]], dtype=torch.float32)
-    tvec = torch.zeros([bs,3], dtype=torch.float32)
+    # bs = 1 # Batchsize
+    # beta = torch.zeros([bs,10], dtype=torch.float32)
+    # # rvec = torch.zeros([bs,3], dtype=torch.float32)
+    # rvec = torch.tensor([[-np.pi/2,np.pi/2,-np.pi/2]], dtype=torch.float32)
+    # tvec = torch.zeros([bs,3], dtype=torch.float32)
 
+    # model = MANO()
+    # pose = torch.zeros([bs,15,3], dtype=torch.float32)
+    # ppca = torch.zeros([bs,45], dtype=torch.float32)
+    # # pose = model.convert_pca_to_pose(ppca)
+    # vertices, joints = model.forward(beta, pose, rvec, tvec)
+    # print('vertices', vertices.shape, vertices.dtype) # torch.Size([10, 778, 3]) torch.float32
+    # print('joints', joints.shape, joints.dtype)       # torch.Size([10, 21, 3]) torch.float32
+
+    # ########################################
+    # ### Quick visualization using Open3D ###
+    # ########################################
+    # # Create a reference frame 10 cm
+    # mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
+    # # Draw mesh model
+    # mesh = o3d.geometry.TriangleMesh()
+    # mesh.vertices = o3d.utility.Vector3dVector(vertices[0,:,:])
+    # mesh.triangles = o3d.utility.Vector3iVector(model.F)
+    # mesh.compute_vertex_normals()
+    # # Draw wireframe
+    # o3d.visualization.draw_geometries([mesh, mesh_frame])
+
+    ang = np.array([
+        # MCP a/a, MCP f/e, PIP f/e, DIP f/e
+        [-20,30], [-10,90], [-1,90], [-1,90], # Index [min,max]
+        [-20,10], [-10,90], [-1,90], [-1,90], # Middle
+        [-20,10], [-10,90], [-1,90], [-1,90], # Ring
+        [-30,20], [-10,90], [-1,90], [-1,90], # Little
+        # x-axis, y-axis  , z-axis
+        # [-45,140], [-45,45], [-45,45], # Thumb TM
+        # [-45,45], [-45,45], [-45,45], # Thumb TM
+        [-1,45], [-45,45], [-45,45], # Thumb TM
+        [-45, 45], [-45,45], [-45,45], # Thumb MCP
+        [-1 , 90]])                    # Thumb IP flex/ext
+    # Convert degrees to radians
+    ang = np.radians(ang)
+
+    poselim = np.array([
+            # Index
+            [[ 0.00, 0.45], [-0.15, 0.20], [0.10, 1.80]], # MCP
+            [[-0.30, 0.20], [ 0.00, 0.00], [0.00, 0.20]], # PIP
+            [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
+            # Middle
+            [[ 0.00, 0.00], [-0.15, 0.15], [0.10, 2.00]], # MCP
+            [[-0.50,-0.20], [ 0.00, 0.00], [0.00, 2.00]], # PIP
+            [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
+            # Little
+            [[-1.50,-0.20], [-0.15, 0.60], [-0.10, 1.60]], # MCP
+            [[ 0.00, 0.00], [-0.50, 0.60], [ 0.00, 2.00]], # PIP
+            [[ 0.00, 0.00], [ 0.00, 0.00], [ 0.00, 1.25]], # DIP
+            # Ring
+            [[-0.50,-0.40], [-0.25, 0.10], [0.10, 1.80]], # MCP
+            [[-0.40,-0.20], [ 0.00, 0.00], [0.00, 2.00]], # PIP
+            [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
+            # Thumb
+            [[ 0.00, 2.00], [-0.83, 0.66], [ 0.00, 0.50]], # MCP
+            [[-0.15,-1.60], [ 0.00, 0.00], [ 0.00, 0.50]], # PIP
+            [[ 0.00, 0.00], [-0.50, 0.00], [-1.57, 1.08]]])# DIP
+
+    poselim_min = torch.tensor(poselim[:,:,0]).unsqueeze(0)
+    print(poselim_min.shape)
+    poselim_max = torch.tensor(poselim[:,:,1]).unsqueeze(0)
+    ang_min = torch.tensor(ang[:,0], dtype=torch.float32).unsqueeze(0)
+    ang_max = torch.tensor(ang[:,1], dtype=torch.float32).unsqueeze(0)
     model = MANO()
-    pose = torch.zeros([bs,15,3], dtype=torch.float32)
-    ppca = torch.zeros([bs,45], dtype=torch.float32)
-    # pose = model.convert_pca_to_pose(ppca)
-    vertices, joints = model.forward(beta, pose, rvec, tvec)
-    print('vertices', vertices.shape, vertices.dtype) # torch.Size([10, 778, 3]) torch.float32
-    print('joints', joints.shape, joints.dtype)       # torch.Size([10, 21, 3]) torch.float32
+    pose_min = model.convert_ang_to_pose(ang_min)
+    pose_max = model.convert_ang_to_pose(ang_max)
 
-    ########################################
-    ### Quick visualization using Open3D ###
-    ########################################
-    # Create a reference frame 10 cm
-    mesh_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1)
-    # Draw mesh model
-    mesh = o3d.geometry.TriangleMesh()
-    mesh.vertices = o3d.utility.Vector3dVector(vertices[0,:,:])
-    mesh.triangles = o3d.utility.Vector3iVector(model.F)
-    mesh.compute_vertex_normals()
-    # Draw wireframe
-    o3d.visualization.draw_geometries([mesh, mesh_frame])
+    print(pose_min)
+    print(pose_max)
+    
