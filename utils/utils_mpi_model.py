@@ -165,7 +165,7 @@ class MANO(nn.Module):
         ### Define joint angle limit ###
         ################################
         alim = np.array([
-            # MCP a/a, MCP f/e, PIP f/e, DIP f/e
+            # MCP a/a, MCP f/e, PIP f/e, DIP f/e [23,2]
             [-20,30], [-10,90], [-1,90], [-1,90], # Index [min,max]
             [-20,10], [-10,90], [-1,90], [-1,90], # Middle
             [-20,10], [-10,90], [-1,90], [-1,90], # Ring

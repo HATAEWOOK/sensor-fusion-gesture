@@ -76,6 +76,7 @@ class Dataload(Dataset):
         if self.dat_name == 'synthetic':
             sample['depth'] = self.hand_dataset.get_depth(idx)
             sample['params'] = self.hand_dataset.get_params(idx)
+            sample['joints'] = self.hand_dataset.get_joints(idx)
             sample['name'] = idx
 
         return sample
@@ -142,67 +143,99 @@ class MSRA_HT:
     def __len__(self):
         return len(self.filenames)
 
-class SYN_MANO:
+class SYN_MANO_generator:
     def __init__(self, data_size = 5000, save_path = None, vis = None):
         self.data_size = data_size
         self.save_path = save_path 
         mano = MANO()
         plim = mano.plim_
-        self.load_dataset(plim)
+        alim = mano.alim_
+        self.random_parameters(alim)
         self.name = 'SYN_MANO'
         self.vis = vis
         self.mano = mano
 
         
-    def load_dataset(self, plim):
+    def random_parameters(self, alim):
         params = []
         for _ in range(self.data_size):
             scale = torch.randn(1)
             trans = torch.randn(2)
-            # rot = torch.tensor([np.random.normal(np.pi/2, 1), np.random.normal(-np.pi/2, 1), np.random.normal(np.pi/2, 1)])
-            # rot = torch.tensor([np.random.normal(0, 1), np.random.normal(-np.pi/2, 1), np.random.normal(0, 1)])
             rot = torch.randn(3)
             beta = torch.randn(10)
             # theta = torch.randn(45) #ang 23
-            plim = plim.view(45,-1)
-            theta = torch.zeros([45])
-            for i in range(len(theta)):
-                theta[i] = np.random.uniform(plim[i,0], plim[i,1])
+            # plim = plim.view(45,-1)
+            # theta = torch.zeros([45])
+            # for i in range(len(theta)):
+            #     theta[i] = np.random.uniform(plim[i,0], plim[i,1])
 
-            params.append(torch.cat((scale, trans, rot, beta, theta)))
+            # params.append(torch.cat((scale, trans, rot, beta, theta)))
+
+            ang = torch.zeros([23])
+            for i in range(len(ang)):
+                ang[i] = np.random.uniform(alim[i,0], alim[i,1])
+
+            params.append(torch.cat((scale, trans, rot, beta, ang)))
 
         self.params = params
     
-    def get_depth(self, idx):
-        verts, faces = self.to_mano(self.params[idx])
+    def generate_gt(self, idx):
+        verts, faces, joints = self.to_mano(self.params[idx])
         m2d = Mano2depth(verts, faces)
         depth = m2d.mesh2depth(self.vis)
-        return depth
+        return depth, joints
 
     def get_params(self, idx):
         # np.savetxt(os.path.join(self.save_path, '%d_params.txt'%idx), self.params[idx].numpy())
         return self.params[idx]
 
-    def generate_file(self, idx):
-        depth = self.get_depth(idx)
-        torch.save(depth, os.path.join(self.save_path, '%d_depth.pt'%idx))
-        params = self.get_params(idx)
-        torch.save(params, os.path.join(self.save_path, '%d_params.pt'%idx))
+    def generate_file(self):
+        for idx in range(self.data_size):
+            depth, joints = self.generate_gt(idx)
+            torch.save(depth, os.path.join(self.save_path, '%d_depth.pt'%idx))
+            torch.save(joints, os.path.join(self.save_path, '%d_joints.pt'%idx))
+            params = self.get_params(idx)
+            torch.save(params, os.path.join(self.save_path, '%d_params.pt'%idx))
+            if (idx+1) % 10 == 0:
+                print("%d / %d"%(idx+1, self.data_size))
+
+    # def to_mano(self, params):
+    #     scale = params[0].unsqueeze(0)
+    #     trans = params[1:3].unsqueeze(0)
+    #     rot = params[3:6].unsqueeze(0)
+    #     beta = params[6:16].unsqueeze(0)
+    #     theta = params[16:61].view(-1,3).unsqueeze(0)
+
+    #     verts, joints = self.mano(beta, theta, rot)
+    #     faces = torch.tensor(self.mano.F)
+    #     verts *= 1000.0
+    #     joints *= 1000.0
+
+    #     joints = joints - joints[:,9,:].unsqueeze(1)
+
+    #     # verts[:,:,:2] = verts[:,:,:2]*scale.unsqueeze(0).unsqueeze(1) + trans.unsqueeze(0)
+
+    #     return verts, faces, joints
 
     def to_mano(self, params):
         scale = params[0].unsqueeze(0)
         trans = params[1:3].unsqueeze(0)
         rot = params[3:6].unsqueeze(0)
         beta = params[6:16].unsqueeze(0)
-        theta = params[16:61].view(-1,3).unsqueeze(0)
+        ang = params[16:].unsqueeze(0)
 
-        verts, _ = self.mano(beta, theta, rot)
+        pose = self.mano.convert_ang_to_pose(ang)
+        verts, joints = self.mano(beta, pose, rot)
         faces = torch.tensor(self.mano.F)
         verts *= 1000.0
+        joints *= 1000.0
+
+        verts  = verts  - joints[:,9,:].unsqueeze(1)
+        joints = joints - joints[:,9,:].unsqueeze(1)
 
         # verts[:,:,:2] = verts[:,:,:2]*scale.unsqueeze(0).unsqueeze(1) + trans.unsqueeze(0)
 
-        return verts, faces
+        return verts, faces, joints
 
     def __len__(self):
         return self.data_size
@@ -220,8 +253,12 @@ class SYN_MANO_loader:
         params = torch.load(os.path.join(self.base_path, '%d_params.pt'%idx))
         return params
 
+    def get_joints(self, idx):
+        joints = torch.load(os.path.join(self.base_path, '%d_joints.pt'%idx))
+        return joints
+
     def __len__(self):
-        return int(len(os.listdir(self.base_path)) / 2)
+        return int(len(os.listdir(self.base_path)) / 3)
 
 if __name__ == '__main__':
     # from torch.utils.data import DataLoader
@@ -245,8 +282,5 @@ if __name__ == '__main__':
     # print(sample['depth'].shape)
 
     vis = set_vis()
-    dat = SYN_MANO(data_size=800, save_path = '/root/Dataset/synthetic/002', vis = vis)
-    for idx in range(len(dat)):
-        dat.generate_file(idx)
-        if (idx+1) % 10 == 0:
-            print('%d/%d'%(idx+1, len(dat)))
+    dat = SYN_MANO_generator(data_size=10000, save_path = '/root/Dataset/synthetic/003', vis = vis)
+    dat.generate_file()

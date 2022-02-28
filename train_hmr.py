@@ -13,6 +13,7 @@ import numpy as np
 from datetime import datetime
 import random
 import time
+import matplotlib.pyplot as plt
 
 import torch
 from torch import nn, optim
@@ -129,7 +130,7 @@ class Trainer:
                     else self.model.state_dict(), self.cfg.best_model)
 
     def load_model(self, model, pretrained):
-        model.load_state_dice(torch.load(pretrained))
+        model.load_state_dict(torch.load(pretrained))
 
     def load_data(self, cfg):
         '''
@@ -292,7 +293,7 @@ class Trainer:
                 loss.requires_grad_(True)
                 avg_meter.update(loss.detach().item(), depth_image.shape[0])
 
-                if (b_idx+1) % ckpt == 0 and (b_idx+1) == 7:
+                if (b_idx+1) % ckpt == 0:
                     term = time.time() - t
                     self.logger('Step : %s/%s' % (b_idx+1, len(self.test_dataloader)))
                     self.logger('Evaluation loss : %.5f' % avg_meter.avg)
@@ -327,6 +328,12 @@ class Trainer:
     def fit(self, n_epochs = None):
 
         starttime = datetime.now().replace(microsecond=0)
+        fig = plt.figure(figsize=(10, 5))
+        ax1 = fig.add_subplot(121)
+        ax2 = fig.add_subplot(122)
+        ax1.set(xlim=[0., self.cfg.n_epochs], autoscaley_on=True, title='Train Loss', xlabel='Epochs', ylabel='Loss')
+        ax2.set(xlim=[0., self.cfg.n_epochs], autoscaley_on=True, title='Evaluation Loss', xlabel='Epochs', ylabel='Loss')
+
 
         if n_epochs is None:
             n_epochs = self.cfg.n_epochs
@@ -347,6 +354,7 @@ class Trainer:
                 train_loss_dict['j2d_loss'],
                 train_loss_dict['reg_loss'],
                 train_loss_dict['total_loss']))
+            ax1.scatter(epoch_num, train_avg_meter.avg)
             
             eval_avg_meter, eval_loss_dict = self.eval()
             self.logger("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
@@ -356,6 +364,7 @@ class Trainer:
                 eval_loss_dict['j2d_loss'],
                 eval_loss_dict['reg_loss'], 
                 eval_loss_dict['total_loss']))
+            ax2.scatter(epoch_num, eval_avg_meter.avg)
 
             if self.cfg.fitting: 
                 if self.cfg.lr_decay_gamma:
@@ -380,6 +389,13 @@ class Trainer:
                 best_loss = eval_avg_meter.avg
 
         endtime = datetime.now().replace(microsecond=0)
+        fig.savefig(os.path.join(self.save_path, 'loss.png'), facecolor='white')
+        plt.close(fig)
+        best_model_dir = os.path.join(self.save_path, 'best_model')
+        if not os.path.exists(best_model_dir):
+            os.makedirs(best_model_dir)
+        self.cfg.best_model = os.path.join(best_model_dir, 'S%02d_%03d_net.pt' % (self.try_num, epoch_num))
+        self.save_model()
         self.logger('Finished Training at %s\n' % (datetime.strftime(endtime, '%Y-%m-%d_%H:%M:%S')))
         self.logger('Training time : %s\n' % (endtime - starttime))
         self.logger('Best loss : %s\n' % best_loss)
@@ -389,19 +405,17 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    r = range(4)
-    configs = [0 for i in range(5)]
     num_features = 2048
     num_param = 39
 
     
-    configs[0] = {
+    configs = {
         'manual_seed' : 24657,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
+        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/pretrained',
         # 'ckp_dir' : 'D:/sfGesture/ckp',
         'lr' : 1e-4,
         'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 5,
+        'lr_decay_step' : 10,
         'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -417,12 +431,12 @@ if __name__ == "__main__":
         'num_workers' : 4, 
         'batch_size' : 32,
         'ckpt_term' : 100, 
-        'n_epochs' : 10,
+        'n_epochs' : 200,
         'fitting' : True,
         'depth_loss_weight': 1e5,
-        'j2d_loss_weight' : 1e1,
+        'j2d_loss_weight' : 1,
         'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1,
+        'reg_loss_weight' : 1e2,
         'normalize' : False,
         'SmmothL1loss_depth' : True,
         'MSEloss_depth' : False,
@@ -435,109 +449,20 @@ if __name__ == "__main__":
         'use_dropout' : [True,True,False],
         'drop_prob' : [0.5, 0.5, 0],
         'ac_func' : [True,True,False],
-        'pretrained': False,
+        'config_num': 0,
+        'iter' : False,
+        'to_mano':None,
+        'pretrained': '/root/sensor-fusion-gesture/pretrain_ckp/results0/best_model/S00_019_net.pt',
     } 
 
-    configs[1] = {
-        'manual_seed' : 24657,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
-        # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-4,
-        'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 5,
-        'lr_reduce' : False,
-        'expr_ID' : 'test1',
-        'cuda_id' : 0,
-        'dataset' : 'MSRA_HT',
-        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
-        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
-        'try_num' : 0,
-        'optimizer' : "adam",
-        'weight_decay' : 1e-1,
-        'momentum' : 0.9,
-        'use_multigpu' : True,
-        'best_model' : None, 
-        'num_workers' : 4, 
-        'batch_size' : 32,
-        'ckpt_term' : 100, 
-        'n_epochs' : 10,
-        'fitting' : True,
-        'depth_loss_weight': 1e5,
-        'j2d_loss_weight' : 1e1,
-        'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1,
-        'normalize' : False,
-        'SmmothL1loss_depth' : True,
-        'MSEloss_depth' : False,
-        'num_iter' : 3,
-        'pred_scale' : False,
-        'num_fclayers' : [num_features+num_param, 
-                         int(num_features/4), 
-                         int(num_features/4),
-                         num_param],
-        'use_dropout' : [True,True,False],
-        'drop_prob' : [0.5, 0.5, 0],
-        'ac_func' : [True,True,False],
-        'pretrained': False,
-    }
-
-    configs[2] = {
-        'manual_seed' : 24657,
-        'ckp_dir' : '/root/sensor-fusion-gesture/ckp/test2',
-        # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 1e-4,
-        'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 5,
-        'lr_reduce' : False,
-        'expr_ID' : 'test1',
-        'cuda_id' : 0,
-        'dataset' : 'MSRA_HT',
-        'dataset_dir' : '/root/Dataset/cvpr14_MSRAHandTrackingDB',
-        # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
-        'try_num' : 0,
-        'optimizer' : "sgd",
-        'weight_decay' : 1e-5,
-        'momentum' : 0.9,
-        'use_multigpu' : True,
-        'best_model' : None, 
-        'num_workers' : 4, 
-        'batch_size' : 32,
-        'ckpt_term' : 100, 
-        'n_epochs' : 10,
-        'fitting' : True,
-        'depth_loss_weight': 1e5,
-        'j2d_loss_weight' : 1e1,
-        'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1,
-        'normalize' : False,
-        'SmmothL1loss_depth' : True,
-        'MSEloss_depth' : False,
-        'num_iter' : 3,
-        'pred_scale' : False,
-        'num_fclayers' : [num_features+num_param, 
-                         int(num_features/4), 
-                         int(num_features/4),
-                         num_param],
-        'use_dropout' : [True,True,False],
-        'drop_prob' : [0.5, 0.5, 0],
-        'ac_func' : [True,True,False],
-        'pretrained': False,
-    }
 
     vis = set_vis()
     
-    for i in r:
-        print("=======================================================")
-        print("config%d"%i)
-        print("=======================================================")
-        configs[i]['config_num'] = i
-        configs[i]['to_mano'] = None
-        configs[i]['ckp_dir'] = '/root/sensor-fusion-gesture/ckp/weight_decay'
-        config = configs[i]
-        cfg = Config(**config)
-        cfg.write_cfg(write_path=os.path.join('./ckp/test3', 'config%d.yaml'%i))
-        model = HMR(cfg)
-        trainer = Trainer(cfg, model, vis)
-        trainer.fit()
+    config = configs
+    cfg = Config(**config)
+    cfg.write_cfg(write_path=os.path.join('/root/sensor-fusion-gesture/ckp/pretrained', 'config0.yaml'))
+    model = HMR(cfg)
+    trainer = Trainer(cfg, model, vis)
+    trainer.fit()
 
     vis.destroy_window()
