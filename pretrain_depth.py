@@ -25,6 +25,7 @@ from net.hmr import HMR
 from utils.train_utils import mklogger, AverageMeter, Mano2depth, Data_preprocess, set_vis, save_image, regularizer_loss, normalize
 from utils.config_parser import Config
 from net.hmr import HMR
+from net.hmr_only_pose import HMR_only_pose
 from net.hmr_s2 import HMRS2, ResNet_Mano, BasicBlock, Bottleneck, DeconvBottleneck
 
 class Trainer:
@@ -95,7 +96,7 @@ class Trainer:
             logger("Training on Multiple GPU's")
 
         self.model = self.model.to(self.device)
-        self.load_data(cfg, vis)
+        self.load_data(cfg)
 
         # load learning rate
         for group in optimizer.param_groups:
@@ -109,7 +110,7 @@ class Trainer:
 
         if cfg.lr_reduce:
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, patience=1, 
+                optimizer, patience=5, 
             )
 
         # loss
@@ -119,6 +120,8 @@ class Trainer:
             self.depth_criterion = torch.nn.MSELoss(reduction='mean')
 
         self.criterion = torch.nn.MSELoss(reduction='mean')
+
+        self.l1loss = torch.nn.L1Loss(reduction='mean')
 
         # etc
         self.cfg = cfg
@@ -132,7 +135,7 @@ class Trainer:
     def load_model(self, model, pretrained):
         model.load_state_dict(torch.load(pretrained))
 
-    def load_data(self, cfg, vis=None):
+    def load_data(self, cfg):
         '''
         self.train_dataloader / self.val_dataloader ('depth','processed', 'cropped', 'trans')
         queries
@@ -141,9 +144,16 @@ class Trainer:
 
         return 0
         '''
-        kwargs = {
+        kwargs_train = {
             'num_workers' : cfg.num_workers,
-            'batch_size' : cfg.batch_size,
+            'batch_size' : cfg.train_batch_size,
+            'shuffle' : True,
+            'drop_last' : True,
+        }
+
+        kwargs_test = {
+            'num_workers' : cfg.num_workers,
+            'batch_size' : cfg.test_batch_size,
             'shuffle' : True,
             'drop_last' : True,
         }
@@ -155,8 +165,8 @@ class Trainer:
         train_size = int(0.8*len(dataset))
         test_size = len(dataset) - train_size
         train_data, test_data = torch.utils.data.random_split(dataset, [train_size, test_size])
-        self.train_dataloader = DataLoader(train_data, **kwargs)
-        self.test_dataloader = DataLoader(test_data, **kwargs)
+        self.train_dataloader = DataLoader(train_data, **kwargs_train)
+        self.test_dataloader = DataLoader(test_data, **kwargs_test)
         print("Data size : ",len(self.train_dataloader), len(self.test_dataloader))
 
 
@@ -181,32 +191,40 @@ class Trainer:
             depth_image = sample['depth'].to(self.device) #[bs, 1, 224, 224]
             target_params = sample['params'].to(self.device) #[bs, 61]
             target_joints = sample['joints'].to(self.device)
+            target_keypt = sample['keypt'].to(self.device)
             keypt, joint, vert, ang, faces, params = self.model(depth_image)
             # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
-            m2d = Mano2depth(vert, faces)
-            pred_depth = m2d.mesh2depth(self.vis) #[bs, 224, 224]
+
+            params_noramlized = params_normalize(params)
+            target_params_normalized = params_normalize(target_params)
+
             # processed_param = self.model.module.get_theta_param(params) if isinstance(self.model, torch.nn.DataParallel) else self.model.get_theta_param(params)
 
-            depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
             reg_loss = torch.tensor(regularizer_loss(ang, theta = self.cfg.to_mano)).to(self.device)
-            param_loss = self.criterion(params.to(self.device), target_params)
+            # param_loss = self.criterion(params.to(self.device), target_params)
+            param_loss = self.criterion(params_noramlized.to(self.device), target_params_normalized)
             joint_loss = self.criterion(joint.to(self.device), target_joints.squeeze())
+            keypt_loss =self.criterion(keypt.to(self.device), target_keypt.squeeze())
 
-            if self.cfg.depth_loss_weight != 0:
-                depth_loss.requires_grad_(True)
+            # param_loss = self.l1loss(params_noramlized.to(self.device), target_params_normalized)
+            # joint_loss = self.l1loss(joint.to(self.device), target_joints.squeeze())
+
+
             if self.cfg.reg_loss_weight != 0:
                 reg_loss.requires_grad_(True)
             if self.cfg.params_loss_weight != 0:
                 param_loss.requires_grad_(True)
             if self.cfg.joint_loss_weight != 0:
                 joint_loss.requires_grad_(True)
+            if self.cfg.keypt_loss_weight != 0:
+                keypt_loss.requires_grad_(True)
 
-            loss = depth_loss*self.cfg.depth_loss_weight + reg_loss*self.cfg.reg_loss_weight + param_loss*self.cfg.params_loss_weight + joint_loss*self.cfg.joint_loss_weight
+            loss = reg_loss*self.cfg.reg_loss_weight + param_loss*self.cfg.params_loss_weight + joint_loss*self.cfg.joint_loss_weight + keypt_loss*self.cfg.keypt_loss_weight
 
             train_loss_dict = {
-                'depth_loss':depth_loss,
                 'param_loss' : param_loss,
                 'joint_loss':joint_loss,
+                'keypt_loss':keypt_loss,
                 'reg_loss':reg_loss,
                 'total_loss':loss,
             }
@@ -220,10 +238,10 @@ class Trainer:
                 self.logger('Step : %s/%s' % (b_idx+1, len(self.train_dataloader)))
                 self.logger('Train loss : %.5f' % avg_meter.avg)
                 self.logger('time : %.5f' % term)
-                self.logger("[Loss] depth_loss : %.5f, param_loss : %.5f, joint_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
-                train_loss_dict['depth_loss'],
+                self.logger("[Loss] param_loss : %.5f, joint_loss : %.5f, keypt_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                 train_loss_dict['param_loss'],
                 train_loss_dict['joint_loss'],
+                train_loss_dict['keypt_loss'],
                 train_loss_dict['reg_loss'],
                 train_loss_dict['total_loss']))
 
@@ -235,7 +253,7 @@ class Trainer:
     def eval(self):
         avg_meter = AverageMeter()
         self.model.eval()
-        ckpt = 30
+        ckpt = 250
         t = time.time()
 
         for b_idx, (sample) in enumerate(self.test_dataloader):
@@ -243,9 +261,13 @@ class Trainer:
                 depth_image = sample['depth'].to(self.device) #[bs, 1, 224, 224]
                 target_params = sample['params'].to(self.device)
                 target_joints = sample['joints'].to(self.device)
+                target_keypt = sample['keypt'].to(self.device)
                 name = sample['name']
                 keypt, joint, vert, ang, faces, params = self.model(depth_image)
                 # [bs, 21, 2], [bs, 21, 3], [bs, 778, 3], [bs, 23], [1538,3], [bs, 39]
+
+                params_noramlized = params_normalize(params)
+                target_params_normalized = params_normalize(target_params)
 
                 if (b_idx+1) % ckpt == 0:
                     vis_path =  os.path.join(self.save_path, 'E%d_%d_pred_3d.png'%(self.start_epoch, b_idx+1))
@@ -256,26 +278,30 @@ class Trainer:
                 pred_depth = m2d.mesh2depth(self.vis, path = vis_path) #[bs, 224, 224]
                 # processed_param = self.model.module.get_theta_param(params) if isinstance(self.model, torch.nn.DataParallel) else self.model.get_theta_param(params)
 
-                depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
                 reg_loss = torch.tensor(regularizer_loss(ang, theta = self.cfg.to_mano)).to(self.device)
-                param_loss = self.criterion(params.to(self.device), target_params)
+                # param_loss = self.criterion(params.to(self.device), target_params)
+                param_loss = self.criterion(params_noramlized.to(self.device), target_params_normalized)
                 joint_loss = self.criterion(joint.to(self.device), target_joints.squeeze())
+                keypt_loss = self.criterion(keypt.to(self.device), target_keypt.squeeze())
+                # param_loss = self.l1loss(params_noramlized.to(self.device), target_params_normalized)
+                # joint_loss = self.l1loss(joint.to(self.device), target_joints.squeeze())
 
-                if self.cfg.depth_loss_weight != 0:
-                    depth_loss.requires_grad_(True)
+
                 if self.cfg.reg_loss_weight != 0:
                     reg_loss.requires_grad_(True)
                 if self.cfg.params_loss_weight != 0:
                     param_loss.requires_grad_(True)
                 if self.cfg.joint_loss_weight != 0:
                     joint_loss.requires_grad_(True)
+                if self.cfg.keypt_loss_weight != 0:
+                    keypt_loss.requires_grad_(True)
 
-                loss = depth_loss*self.cfg.depth_loss_weight + reg_loss*self.cfg.reg_loss_weight + param_loss*self.cfg.params_loss_weight + joint_loss*self.cfg.joint_loss_weight
+                loss = reg_loss*self.cfg.reg_loss_weight + param_loss*self.cfg.params_loss_weight + joint_loss*self.cfg.joint_loss_weight + keypt_loss*self.cfg.keypt_loss_weight
 
                 eval_loss_dict = {
-                    'depth_loss':depth_loss,
                     'param_loss':param_loss,
                     'joint_loss':joint_loss,
+                    'keypt_loss':keypt_loss,
                     'reg_loss':reg_loss,
                     'total_loss':loss,
                 }
@@ -288,10 +314,10 @@ class Trainer:
                     self.logger('Step : %s/%s' % (b_idx+1, len(self.test_dataloader)))
                     self.logger('Evaluation loss : %.5f' % avg_meter.avg)
                     self.logger('time : %.5f' % term)
-                    self.logger("[Loss] depth_loss : %.5f, param_loss : %.5f, joint_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
-                    eval_loss_dict['depth_loss'],
+                    self.logger("[Loss] param_loss : %.5f, joint_loss : %.5f, keypt_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                     eval_loss_dict['param_loss'], 
                     eval_loss_dict['joint_loss'],
+                    eval_loss_dict['keypt_loss'],
                     eval_loss_dict['reg_loss'], 
                     eval_loss_dict['total_loss']))
 
@@ -299,12 +325,14 @@ class Trainer:
                     target = depth_image[0]
                     param = params[0].squeeze().cpu()
                     target_param = target_params[0].squeeze().cpu()
+                    pred_joint = joint[0].squeeze().cpu()
 
                     np.savetxt(os.path.join(self.save_path, 'E%d_%d_param.txt'%(self.start_epoch, b_idx+1)), param.numpy())
                     np.savetxt(os.path.join(self.save_path, 'E%d_%d_targetparam.txt'%(self.start_epoch, b_idx+1)), target_param.numpy())
-                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_pred.txt'%(self.start_epoch, b_idx+1)), pred.squeeze().cpu().numpy())
-                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_target.txt'%(self.start_epoch, b_idx+1)), target.squeeze().cpu().numpy())
-                    save_image(pred, os.path.join(self.save_path, 'E%d_%d_pred_%s.png'%(self.start_epoch, b_idx+1, name[0])))
+                    np.savetxt(os.path.join(self.save_path, 'E%d_%d_joint.txt'%(self.start_epoch, b_idx+1)), pred_joint.numpy())
+                    # np.savetxt(os.path.join(self.save_path, 'E%d_%d_pred.txt'%(self.start_epoch, b_idx+1)), pred.squeeze().cpu().numpy())
+                    # np.savetxt(os.path.join(self.save_path, 'E%d_%d_target.txt'%(self.start_epoch, b_idx+1)), target.squeeze().cpu().numpy())
+                    # save_image(pred, os.path.join(self.save_path, 'E%d_%d_pred_%s.png'%(self.start_epoch, b_idx+1, name[0])))
                     save_image(target, os.path.join(self.save_path, 'E%d_%d_target_%s.png'%(self.start_epoch, b_idx+1, name[0])))
 
         return avg_meter, eval_loss_dict
@@ -312,15 +340,11 @@ class Trainer:
     def fit(self, n_epochs = None):
 
         starttime = datetime.now().replace(microsecond=0)
-        fig = plt.figure(figsize=(10, 5))
-        ax1 = fig.add_subplot(121)
-        ax2 = fig.add_subplot(122)
+        train_loss = {}
+        eval_loss = {}
         
         if n_epochs is None:
             n_epochs = self.cfg.n_epochs
-
-        ax1.set(xlim=[0, n_epochs], title='Train Loss', xlabel='Epochs', ylabel='Loss')
-        ax2.set(xlim=[0, n_epochs], title='Evaluation Loss', xlabel='Epochs', ylabel='Loss')
 
         self.logger('Started training at %s for %d epochs' % (datetime.strftime(starttime, '%Y-%m-%d_%H:%M:%S'), n_epochs))
 
@@ -332,30 +356,30 @@ class Trainer:
 
             train_avg_meter, train_loss_dict = self.train()
             self.logger("[Epoch: %d/%d] Train loss : %.5f" % (epoch_num, n_epochs, train_avg_meter.avg))
-            self.logger("[Loss] depth_loss : %.5f, param_loss : %.5f, joint_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
-                train_loss_dict['depth_loss'],
+            self.logger("[Loss] param_loss : %.5f, joint_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                 train_loss_dict['param_loss'],
                 train_loss_dict['joint_loss'],
                 train_loss_dict['reg_loss'],
                 train_loss_dict['total_loss']))
-            ax1.scatter(epoch_num, train_avg_meter.avg)
+            
             
             eval_avg_meter, eval_loss_dict = self.eval()
             self.logger("[Epoch: %d/%d] Evaluation loss : %.5f" % (epoch_num, n_epochs, eval_avg_meter.avg))
-            self.logger("[Loss] depth_loss : %.5f, param_loss : %.5f, joint_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
-                eval_loss_dict['depth_loss'],
+            self.logger("[Loss] param_loss : %.5f, joint_loss : %.5f, reg_loss : %.5f, total_loss : %.5f" % (
                 eval_loss_dict['param_loss'], 
                 eval_loss_dict['joint_loss'],
                 eval_loss_dict['reg_loss'], 
                 eval_loss_dict['total_loss']))
-            ax2.scatter(epoch_num, eval_avg_meter.avg)
+
+            train_loss[epoch_num] = train_avg_meter.avg
+            eval_loss[epoch_num] = eval_avg_meter.avg
 
             if self.cfg.fitting: 
                 if self.cfg.lr_decay_gamma:
                     self.scheduler.step()
 
                 if self.cfg.lr_reduce:
-                    self.scheduler.step(eval_loss_dict['j3d_loss'])
+                    self.scheduler.step(eval_loss_dict['param_loss'])
 
                 cur_lr = self.optimizer.param_groups[0]['lr']
 
@@ -373,8 +397,15 @@ class Trainer:
                 best_loss = eval_avg_meter.avg
 
         endtime = datetime.now().replace(microsecond=0)
-        fig.savefig(os.path.join(self.save_path, 'loss.png'), facecolor='white')
+
+        fig = plt.figure(figsize=(10, 5))
+        ax1 = fig.add_subplot(111)
+        ax1.set(xlim=[0, n_epochs], title='Loss', xlabel='Epochs', ylabel='Loss')
+        ax1.plot(train_loss.keys(), train_loss.values(), c = "r", linewidth=0.5)
+        ax1.plot(eval_loss.keys(), eval_loss.values(), c = "g", linewidth=0.5)
+        fig.savefig(os.path.join(self.save_path, 'logs', 'loss.png'), facecolor='white')
         plt.close(fig)
+
         best_model_dir = os.path.join(self.save_path, 'best_model')
         if not os.path.exists(best_model_dir):
             os.makedirs(best_model_dir)
@@ -386,18 +417,27 @@ class Trainer:
         self.logger('Best loss : %s\n' % best_loss)
         self.logger('Best model : %s\n' % self.cfg.best_model)
 
+def params_normalize(param):
+    mean = 0.2555
+    std = 0.7966
+
+    param_normalized = (param - mean) / std
+
+    return param_normalized
+
 
 if __name__ == "__main__":
     num_features = 2048
     num_param = 39
+    # num_param = 23
     
     configs = {
-        'manual_seed' : 21846,
+        'manual_seed' : 29648,
         'ckp_dir' : '/root/sensor-fusion-gesture/pretrain_ckp',
         # 'ckp_dir' : 'D:/sfGesture/ckp',
-        'lr' : 0.1,
-        'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 5,
+        'lr' : 1e-4,
+        'lr_decay_gamma' : 0.5,
+        'lr_decay_step' : 20,
         'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -411,16 +451,18 @@ if __name__ == "__main__":
         'use_multigpu' : True,
         'best_model' : None, 
         'num_workers' : 4, 
-        'batch_size' : 32,
+        'train_batch_size' : 32,
+        'test_batch_size' : 8,
         'ckpt_term' : 100, 
         'n_epochs' : 100,
         'fitting' : True,
         'depth_loss_weight': 0,
         'j2d_loss_weight' : 0,
         'j3d_loss_weight' :0,
-        'reg_loss_weight' : 0,
-        'params_loss_weight' : 1,
-        'joint_loss_weight' : 0, 
+        'reg_loss_weight' : 1e2,
+        'params_loss_weight' : 1e5,
+        'joint_loss_weight' : 1e3,
+        'keypt_loss_weight' : 1e3,
         'normalize' : False,
         'SmmothL1loss_depth' : True,
         'MSEloss_depth' : False,
@@ -437,14 +479,14 @@ if __name__ == "__main__":
         'pretrained' : False,
         'iter' : False,
         'to_mano' : None,
-        'config_num' : 4,
+        'config_num' : 6,
     } 
 
     
     vis = set_vis()
 
     cfg = Config(**configs)
-    cfg.write_cfg(write_path=os.path.join('./pretrain_ckp', 'config4.yaml'))
+    cfg.write_cfg(write_path=os.path.join('./pretrain_ckp', 'config6.yaml'))
     model = HMR(cfg)
     trainer = Trainer(cfg, model, vis)
     trainer.fit()

@@ -71,6 +71,11 @@ class LinearModel(nn.Module):
                 name = 'regressor_fc_{}'.format(_),
                 module = nn.Linear(in_features=self.fc_layers[_], out_features=self.fc_layers[_+1])
             )
+
+            self.fc_blocks.add_module(
+                name = 'batch_normalization_{}'.format(_),
+                module = nn.BatchNorm1d(self.fc_layers[_+1])
+            )
             
             if _ < l_use_ac_func and self.use_ac_func[_]:
                 self.fc_blocks.add_module(
@@ -96,10 +101,11 @@ class LinearModel(nn.Module):
 ###############################################################################
 if __name__ == '__main__':
     # Just to check network architecture
+    from torchsummary import summary as summary
     device      = torch.device('cpu')
     fc_layers   = [2048+39, 1024, 512, 39]
     use_dropout = [True, True, False]
     drop_prob   = [0.5, 0.5, 0]
     use_ac_func = [True, True, False]   
     model = LinearModel(fc_layers, use_dropout, drop_prob, use_ac_func).to(device)
-    print(model)
+    

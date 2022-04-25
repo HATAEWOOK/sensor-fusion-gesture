@@ -59,43 +59,8 @@ class Visualizer():
         return o3d.visualization.draw_geometries(mesh_list)
 
 if __name__ == '__main__':
-    from datasetloader.data_loader_MSRAHT import MSRA_HT
+    path = '/root/sensor-fusion-gesture/ckp/FreiHAND/results0'
+    v = Visualizer(path, 5, 400)
 
-    base_path = 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB'
-    msra = MSRA_HT(base_path=base_path)
-    data_joints = msra.get_j3d(1789)
-    depth = msra.get_depth(1789)
-    proj = data_joints[:,:2]
-
-
-    path = 'D:/sfGesture/ckp/results'
-    # vert = 'E3_20_vert'
-    # faces = 'E3_20_faces'
-    joints = 'E17_10_joint'
-    keypt = 'E17_10_keypt'
-    key = np.loadtxt(os.path.join(path, keypt+'.txt'), dtype=float, delimiter=' ', skiprows=0)
-    key = key - key[0,:]
-    # jo = np.loadtxt(os.path.join(path, joints+'.txt'), dtype=float, delimiter=' ', skiprows=0)
-
-    plt.figure()
-    plt.scatter(key[:,0],key[:,1],c=[0,0,0])
-    plt.scatter(proj[:,0],proj[:,1],c=[1,0,0])
-    plt.show()
-
-    # path = 'D:/sfGesture/ckp/results(depth+j3d+j2d)'
-    # vert = 'E88_20_vert'
-    # faces = 'E88_20_faces'
-    # joints = 'E88_20_joint'
-
-    # path = 'D:/sfGesture/ckp/results'
-    # vert = 'E2_10_vert'
-    # faces = 'E2_10_faces'
-    # joints = 'E2_10_joint'
-    # v = Visualizer(path, vert, faces, joints)
-    # # j = v.joint_mesh()
-    # j2 = v.joint_mesh(data_joints)
-    # v.mesh_show(j2)
-
-    # plt.figure()
-    # plt.imshow(depth, cmap='gray')
-    # plt.show()
+    j = v.hand_mesh()
+    v.mesh_show(j)

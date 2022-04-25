@@ -11,10 +11,17 @@ sys.path.append('..')
 
 from utils.utils_mpi_model import MANO
 from utils.resnet import resnet152 
+try:
+    from efficientnet_pt.model import EfficientNet
+except:
+    import sys
+    sys.path.append(os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
+    from efficientnet_pt import EfficientNet
+from utils.train_utils import normalize_image, compute_uv_from_integral
+from net.hg_hm import Net_HM_HG
 
 bases_num = 10 
-# pose_num = 6
-pose_num = 45
+pose_num = 30
 mesh_num = 778
 keypoints_num = 16
 
@@ -81,7 +88,6 @@ def rot_pose_beta_to_mesh(rots, poses, betas):
     mesh_face = Variable(torch.from_numpy(np.expand_dims(dd['f'],0).astype(np.int16)).to(device=devices))
     
     #import pdb; pdb.set_trace()
-
     batch_size = rots.size(0)   
 
     mesh_face = mesh_face.repeat(batch_size, 1, 1)
@@ -192,168 +198,110 @@ def normal_init(module, mean=0, std=1, bias=0):
     if hasattr(module, 'bias'):
         nn.init.constant_(module.bias, bias)
 
-class Identity(nn.Module):
-    def __init__(self):
-        super(Identity, self).__init__()
-        
+class Encoder(nn.Module):
+    def __init__(self,version='b3'):
+        super(Encoder, self).__init__()
+        self.version = version
+        if self.version == 'b3':
+            #self.encoder = EfficientNet.from_pretrained('efficientnet-b3')
+            self.encoder = EfficientNet.from_name('efficientnet-b3')
+            # b3 [1536,7,7]
+            self.pool = nn.AvgPool2d(7, stride=1)
+        '''
+        elif self.version == 'b5':
+            self.encoder = EfficientNet.from_pretrained('efficientnet-b5')
+            # b5 [2048,7,7]
+            self.pool = nn.AvgPool2d(7, stride=1)
+        '''
     def forward(self, x):
-        return torch.flatten(x,1)
+        features, low_features = self.encoder.extract_features(x)#[B,1536,7,7] [B,32,56,56]
+        features = self.pool(features)
+        features = features.view(features.shape[0],-1)##[B,1536]
+        return features, low_features
 
-class HMRS2(nn.Module):
-    def __init__(self, cfg):
-        super(HMRS2, self).__init__()
-
-        if cfg.pretrained:
-            self.encoder = resnet152(pretrained=True)
+class MyHandDecoder(nn.Module):
+    def __init__(self,inp_neurons=1536,use_mean_shape=False):
+        super(MyHandDecoder, self).__init__()
+        self.hand_decode = MyPoseHand(inp_neurons=inp_neurons,use_mean_shape = use_mean_shape)
+        if use_mean_shape:
+            print("use mean MANO shape")
         else:
-            self.encoder = resnet152()
+            print("do not use mean MANO shape")
+        #self.hand_faces = self.hand_decode.mano_branch.faces
 
-        self.encoder.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.encoder.fc = Identity()
+    def forward(self, features):
+        #sides = torch.zeros(features.shape[0],1)
+        #verts, faces, joints = self.hand_decode(features, Ks)
+        '''
+        joints, verts, faces, theta, beta = self.hand_decode(features)
+        return joints, verts, faces, theta, beta
+        '''
+        joints, verts, faces, theta, beta, scale, trans, rot, tsa_poses = self.hand_decode(features)
+        return joints, verts, faces, theta, beta, scale, trans, rot, tsa_poses
 
-        self.posehand = PoseHand(mode = cfg.to_mano)
-        
-        self.cfg = cfg
-
-    def forward(self, inputs):
-        features = self.encoder(inputs)
-        
-        keypt, joints, verts, theta, faces, params = self.posehand(features)
-
-        return keypt, joints, verts, theta, faces, params
-
-
-class PoseHand(nn.Module):
+class MyPoseHand(nn.Module):
     def __init__(
         self,
-        inp_neurons=2048,
+        ncomps=6,
+        inp_neurons=1536,
+        use_pca=True,
+        dropout=0,
         use_mean_shape = False,
-        trans_dim =2,
-        mode = 'S2',
-        iter = False
         ):
-        super(PoseHand, self).__init__()
+        super(MyPoseHand, self).__init__()
         self.use_mean_shape = use_mean_shape
         #import pdb;pdb.set_trace()
+        # Base layers
+        base_layers = []
+        base_layers.append(nn.Linear(inp_neurons, 1024))
+        base_layers.append(nn.BatchNorm1d(1024))
+        base_layers.append(nn.ReLU())
+        base_layers.append(nn.Linear(1024, 512))
+        base_layers.append(nn.BatchNorm1d(512))
+        base_layers.append(nn.ReLU())
+        self.base_layers = nn.Sequential(*base_layers)
 
-        if iter:
-            max_bs = 64
-            init_theta = torch.zeros([max_bs,45], dtype=np.float32)
-            self.register_buffer('init_theta', init_theta)
-            init_beta = torch.zeros([max_bs,10], dtype=np.float32)
-            self.register_buffer('init_beta', init_beta)
-            init_scale = torch.zeros([max_bs,1], dtype=np.float32)
-            self.register_buffer('init_scale', init_scale)
-            init_trans = torch.zeros([max_bs,2], dtype=np.float32)
-            self.register_buffer('init_trans', init_trans)
-            init_rot = torch.zeros([max_bs,3], dtype=np.float32)
-            self.register_buffer('init_rot', init_rot)
+        # Pose Layers
+        layers = []
+        layers.append(nn.Linear(512, 128))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(128, 30))#6
+        self.pose_reg = nn.Sequential(*layers)
 
-            # Base layers
-            base_layers = []
-            base_layers.append(nn.Linear(inp_neurons, 1024))
-            base_layers.append(nn.BatchNorm1d(1024))
-            base_layers.append(nn.ReLU())
-            base_layers.append(nn.Linear(1024, 512))
-            base_layers.append(nn.BatchNorm1d(512))
-            base_layers.append(nn.ReLU())
-            self.base_layers = nn.Sequential(*base_layers)
+        # Shape Layers
+        layers = []
+        layers.append(nn.Linear(512, 128))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(128, 10))
+        self.shape_reg = nn.Sequential(*layers)
 
-            # Pose Layers
-            layers = []
-            layers.append(nn.Linear(512+pose_num, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 30))#6
-            self.pose_reg = nn.Sequential(*layers)
+        # Trans layers
+        layers = []
+        layers.append(nn.Linear(512, 128))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(128, 32))
+        layers.append(nn.Linear(32, 3))
+        self.trans_reg = nn.Sequential(*layers)
 
-            # Shape Layers
-            layers = []
-            layers.append(nn.Linear(512+10, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 10))
-            self.shape_reg = nn.Sequential(*layers)
+        # rot layers
+        layers = []
+        layers.append(nn.Linear(512, 128))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(128, 32))
+        layers.append(nn.Linear(32, 3))
+        self.rot_reg = nn.Sequential(*layers)
 
-            # Trans layers
-            layers = []
-            layers.append(nn.Linear(512+2, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 32))
-            layers.append(nn.Linear(32, trans_dim))
-            self.trans_reg = nn.Sequential(*layers)
-
-            # rot layers
-            layers = []
-            layers.append(nn.Linear(512+3, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 32))
-            layers.append(nn.Linear(32, 3))
-            self.rot_reg = nn.Sequential(*layers)
-
-            # scale layers
-            layers = []
-            layers.append(nn.Linear(512+1, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 32))
-            layers.append(nn.Linear(32, 1))
-            #layers.append(nn.ReLU())
-            self.scale_reg = nn.Sequential(*layers)
-        
-        else:
-            # Base layers
-            base_layers = []
-            base_layers.append(nn.Linear(inp_neurons, 1024))
-            base_layers.append(nn.BatchNorm1d(1024))
-            base_layers.append(nn.ReLU())
-            base_layers.append(nn.Linear(1024, 512))
-            base_layers.append(nn.BatchNorm1d(512))
-            base_layers.append(nn.ReLU())
-            self.base_layers = nn.Sequential(*base_layers)
-
-            # Pose Layers
-            layers = []
-            layers.append(nn.Linear(512, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, pose_num))#6
-            self.pose_reg = nn.Sequential(*layers)
-
-            # Shape Layers
-            layers = []
-            layers.append(nn.Linear(512, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 10))
-            self.shape_reg = nn.Sequential(*layers)
-
-            # Trans layers
-            layers = []
-            layers.append(nn.Linear(512, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 32))
-            layers.append(nn.Linear(32, trans_dim))
-            self.trans_reg = nn.Sequential(*layers)
-
-            # rot layers
-            layers = []
-            layers.append(nn.Linear(512, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 32))
-            layers.append(nn.Linear(32, 3))
-            self.rot_reg = nn.Sequential(*layers)
-
-            # scale layers
-            layers = []
-            layers.append(nn.Linear(512, 128))
-            layers.append(nn.ReLU())
-            layers.append(nn.Linear(128, 32))
-            layers.append(nn.Linear(32, 1))
-            #layers.append(nn.ReLU())
-            self.scale_reg = nn.Sequential(*layers)
+        # scale layers
+        layers = []
+        layers.append(nn.Linear(512, 128))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(128, 32))
+        layers.append(nn.Linear(32, 1))
+        #layers.append(nn.ReLU())
+        self.scale_reg = nn.Sequential(*layers)
 
         self.init_weights()
-        self.mode = mode
-        self.iter = iter
-        self.mano = MANO()
-
-        # self.mean = torch.zeros()
+        #self.mean = torch.zeros()
         #self.mean = Variable(torch.FloatTensor([400,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0,.0]).cuda())
     def init_weights(self):
         #import pdb; pdb.set_trace()
@@ -366,45 +314,22 @@ class PoseHand(nn.Module):
         '''
         normal_init(self.scale_reg[0],std=0.001)
         normal_init(self.scale_reg[2],std=0.001)
-        #normal_init(self.scale_reg[3],std=0.001,bias=0.95)
-        normal_init(self.scale_reg[3],std=0.001,bias=1)
-
+        normal_init(self.scale_reg[3],std=0.001,bias=0.95)
 
         normal_init(self.trans_reg[0],std=0.001)
         normal_init(self.trans_reg[2],std=0.001)
         normal_init(self.trans_reg[3],std=0.001)
-        nn.init.constant_(self.trans_reg[3].bias,0)
-        #import pdb; pdb.set_trace()
-        #nn.init.constant_(self.trans_reg[3].bias[1],0.65)
+        nn.init.constant_(self.trans_reg[3].bias[2],0.65)
         
 
     def forward(self, features):
         #import pdb; pdb.set_trace()
-
-
-        if self.iter:
-            iter_num = 3
-            base_features = self.base_layers(features)
-            theta =self.init_theta
-            beta =self.init_beta
-            scale =self.init_scale
-            trans =self.init_trans
-            rot =self.init_rot
-
-            for _ in range(iter_num):
-                theta = self.pose_reg(base_features+theta)
-                beta = self.shape_reg(base_features+beta)
-                scale = self.scale_reg(base_features+scale)
-                trans = self.trans_reg(base_features+trans)
-                rot = self.rot_reg(base_features+rot)
-        else:
-            base_features = self.base_layers(features)
-            theta = self.pose_reg(base_features)#pose
-            beta = self.shape_reg(base_features)#shape
-            scale = self.scale_reg(base_features)
-            trans = self.trans_reg(base_features)
-            rot = self.rot_reg(base_features)
-
+        base_features = self.base_layers(features)
+        theta = self.pose_reg(base_features)#pose
+        beta = self.shape_reg(base_features)#shape
+        scale = self.scale_reg(base_features)
+        trans = self.trans_reg(base_features)
+        rot = self.rot_reg(base_features)
         '''
         mano = self.mano_regressor(features)
         mano = mano + mano.mul(self.mean.repeat(mano.shape[0],1).to(device=mano.device))
@@ -414,300 +339,142 @@ class PoseHand(nn.Module):
         theta = mano[:,7:13]#pose
         beta = mano[:,13:]
         '''
+        if self.use_mean_shape:
+            beta = torch.zeros_like(beta).to(beta.device)
+        # try to set theta as zero tensor
+        #theta = torch.zeros_like(theta)#
+        #import pdb; pdb.set_trace()
+        jv, faces, tsa_poses = rot_pose_beta_to_mesh(rot, theta, beta)#rotation pose shape
+        #import pdb; pdb.set_trace()
+        jv_ts = trans.unsqueeze(1) + torch.abs(scale.unsqueeze(2)) * jv[:,:,:]
+        #jv_ts = jv_ts.view(x.size(0),-1) 
+        joints = jv_ts[:,0:21]
+        verts = jv_ts[:,21:]
+        #import pdb; pdb.set_trace()
+        #joints,  verts, faces = pose_hand(mano, K)
+        #joints,  verts, faces = None, None, None
+        #return joints, verts, faces, theta, beta
+        return joints, verts, faces, theta, beta, scale, trans, rot, tsa_poses
 
-        if self.mode == 'S2':
-            if self.use_mean_shape:
-                beta = torch.zeros_like(beta).to(beta.device)
-            # try to set theta as zero tensor
-            #theta = torch.zeros_like(theta)#
-            #import pdb; pdb.set_trace()
-            jv, faces, tsa_poses = rot_pose_beta_to_mesh(rot, theta, beta)#rotation pose shape
-            #import pdb; pdb.set_trace()
-            verts = jv[:,21:]
-            joints = jv[:,0:21]
+class RGB2HM(nn.Module):
+    def __init__(self):
+        super(RGB2HM, self).__init__()
+        num_joints = 21
+        self.net_hm = Net_HM_HG(num_joints,
+                                num_stages=2,
+                                num_modules=2,
+                                num_feats=256)
+    def forward(self, images):
+        # 1. Heat-map estimation
+        est_hm_list, encoding = self.net_hm(images)
+        return est_hm_list, encoding
 
-            # Convert from m to mm
-            verts *= 1000.0
-            joints *= 1000.0
-
-            keypt = trans.unsqueeze(1) + scale.unsqueeze(2) * joints[:,:,:2]
-            verts  = verts  - joints[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
-            joints = joints - joints[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
-            keypt = keypt - keypt[:,9,:].unsqueeze(1)
-            #keypt, joint, vert, ang, faces, params
-            return keypt, joints, verts, theta, faces[0], torch.cat([scale, trans, rot, beta, theta], dim=1)
+class Model(nn.Module):
+    def __init__(self, train_requires=['joints', 'heatmaps']):
+        super(Model, self).__init__()
         
-        if self.mode == 'mobilehand':
-            bs = theta.shape[0]
-            pose = theta.view(bs,-1,3)
-            verts, joints = self.mano(beta, pose, rot)
-            faces = torch.tensor(self.mano.F).cuda()
+        # 2D hand estimation
+        if 'heatmaps' in train_requires:
+            self.rgb2hm = RGB2HM()
 
-            # Convert from m to mm
-            verts *= 1000.0
-            joints *= 1000.0
-
-            keypt = trans.unsqueeze(1) + scale.unsqueeze(2) * joints[:,:,:2]
-            verts  = verts  - joints[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
-            joints = joints - joints[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
-            keypt = keypt - keypt[:,9,:].unsqueeze(1)
-
-            return keypt, joints, verts, theta, faces, torch.cat([scale, trans, rot, beta, theta], dim=1)
-
-        #return joints, verts, faces, theta, beta, scale, trans, rot, tsa_poses
-        # return joints, verts, faces, theta, beta, scale, trans, rot, tsa_poses
-
-
-#-------------------
-# Resnet + Mano
-#-------------------
-
-def conv3x3(in_planes, out_planes, stride=1):
-    "3x3 convolution with padding"
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=False)
-
-class BasicBlock(nn.Module):
-    expansion = 1
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-class Bottleneck(nn.Module):
-    expansion = 4
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None):
-        super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3, stride=stride,
-                               padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, planes * 4, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(planes * 4)
-        self.relu = nn.ReLU(inplace=True)
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x):
-        residual = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
-
-        out = self.conv3(out)
-        out = self.bn3(out)
-
-        if self.downsample is not None:
-            residual = self.downsample(x)
-
-        out += residual
-        out = self.relu(out)
-
-        return out
-
-class DeconvBottleneck(nn.Module):
-    def __init__(self, in_channels, out_channels, expansion=2, stride=1, upsample=None):
-        super(DeconvBottleneck, self).__init__()
-        self.expansion = expansion
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(out_channels)
-        if stride == 1:
-            self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
-                                   stride=stride, bias=False, padding=1)
+        # 3D hand estimation
+        if "joints" in train_requires:
+            self.regress_mode = 'mano'
+            self.use_mean_shape = True
+            if self.regress_mode == 'mano':# efficient-b3
+                self.encoder = Encoder()
+                self.dim_in = 1536
+                self.hand_decoder = MyHandDecoder(inp_neurons=self.dim_in, use_mean_shape = self.use_mean_shape)
         else:
-            self.conv2 = nn.ConvTranspose2d(out_channels, out_channels,
-                                            kernel_size=3,
-                                            stride=stride, bias=False,
-                                            padding=1,
-                                            output_padding=1)
-        self.bn2 = nn.BatchNorm2d(out_channels)
-        self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion,
-                               kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(out_channels * self.expansion)
-        self.relu = nn.ReLU()
-        self.upsample = upsample
+            self.regress_mode = None
 
-    def forward(self, x):
-        shortcut = x
+    def predict_singleview(self, images, requires):
+        vertices, faces, joints, shape, pose, trans, segm_out, textures, lights = None, None, None, None, None, None, None, None, None
+        re_images, re_sil, re_img, re_depth, gt_depth = None, None, None, None, None
+        pca_text, face_textures = None, None
+        output = {}
+        # 1. Heat-map estimation
+        #end = time.time()
 
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
+        if self.regress_mode == 'mano' or self.regress_mode == 'mano1':
+            images = normalize_image(images)
+            features, low_features = self.encoder(images)#[b,1536]
 
-        out = self.conv2(out)
-        out = self.bn2(out)
-        out = self.relu(out)
+            if 'heatmaps' in requires:
+                images_hm = images
+                if images_hm.shape[3] != 256:
+                    pad = nn.ZeroPad2d(padding=(0,32,0,32))
+                    images_hm = pad(images_hm) #[bs, 3, 256, 256]
+                hm_list, encoding = self.rgb2hm(images_hm)
 
-        out = self.conv3(out)
-        out = self.bn3(out)
-        out = self.relu(out)
+                hm_keypt_list = []
+                for hm in hm_list:
+                    hm_keypt = compute_uv_from_integral(hm, images_hm.shape[2:4]) #[bs, 21, 3]
+                    hm_keypt_list.append(hm_keypt)
 
-        if self.upsample is not None:
-            shortcut = self.upsample(x)
+                output['hm_list'] = hm_list
+                output['hm_keypt_list'] = hm_keypt_list
+                output['hm_2d_keypt_list'] = [hm_keypt[:,:,:2] for hm_keypt in hm_keypt_list]
 
-        out += shortcut
-        out = self.relu(out)
+            if 'joints' in requires or 'verts' in requires:
+                #joints, vertices, faces, pose, shape = self.hand_decoder(features)
+                joints, vertices, faces, pose, shape, scale, trans, rot, tsa_poses  = self.hand_decoder(features)
 
-        return out
+        output['joints'] = joints
+        output['vertices'] = vertices
+        output['pose'] = pose
+        output['shape'] = shape
+        output['scale'] = scale
+        output['trans'] = trans
+        output['rot'] = rot
+        output['tsa_poses'] = tsa_poses
+        output['faces'] = faces
 
-class ResNet_Mano(nn.Module):
+        '''
+        #del features
+        #import pdb; pdb.set_trace()
+        # 4. Render image
+        faces = faces.type(torch.int32)
+        if self.render_choice == 'NR':
+            # use neural renderer
+            #I = torch.tensor([[1,0,0,0],[0,1,0,0],[0,0,1,0]]).float()
+            #Is = torch.unsqueeze(I,0).repeat(Ks.shape[0],1,1).to(Ks.device)
+            # create textures
+            if textures is None:
+                texture_size = 1
+                textures = torch.ones(faces.shape[0], faces.shape[1], texture_size, texture_size, texture_size, 3, dtype=torch.float32).to(vertices.device)
+            
+            self.renderer_NR.R = torch.unsqueeze(torch.tensor([[1,0,0],[0,1,0],[0,0,1]]).float(),0).repeat(Ks.shape[0],1,1).to(vertices.device)
+            self.renderer_NR.t = torch.unsqueeze(torch.tensor([[0,0,0]]).float(),0).repeat(Ks.shape[0],1,1).to(vertices.device)
+            self.renderer_NR.K = Ks[:,:,:3].to(vertices.device)
+            self.renderer_NR.dist_coeffs = self.renderer_NR.dist_coeffs.to(vertices.device)
+            #import pdb; pdb.set_trace()
+            
+            face_textures = textures.view(textures.shape[0],textures.shape[1],1,1,1,3)
+            
+            re_img,re_depth,re_sil = self.renderer_NR(vertices, faces, torch.tanh(face_textures), mode=None)
 
-    def __init__(self, block, layers, input_option, num_classes=61):
+            re_depth = re_depth * (re_depth < 1).float()#set 100 into 0
 
-        self.input_option = input_option
-        self.inplanes = 64
-        super(ResNet_Mano, self).__init__()
-        # self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)   
-        self.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)       
-        #if (self.input_option):        
-        self.conv11 = nn.Conv2d(24, 64, kernel_size=7, stride=2, padding=3, bias=False)
-
-        self.bn1 = nn.BatchNorm2d(64)
-        self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-
-        self.layer1 = self._make_layer(block, 64, layers[0])
-        self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
-        self.avgpool = nn.AvgPool2d(7)
-
-        self.fc = nn.Linear(512 * block.expansion, num_classes)                        
-        # self.mean = Variable(torch.cat([torch.FloatTensor([545.,128.,128.]), torch.zeros([58])]))
-        self.mean = Variable(torch.zeros([61]))
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                m.weight.data.fill_(1)
-                m.bias.data.zero_()
-
-    def _make_layer(self, block, planes, blocks, stride=1):
-        downsample = None
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, planes * block.expansion,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes * block.expansion),
-            )
-
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample))
-        self.inplanes = planes * block.expansion
-        for i in range(1, blocks):
-            layers.append(block(self.inplanes, planes))
-
-        return nn.Sequential(*layers)
-
-
-    def forward(self, x):
-       
-        if (self.input_option):       
-            x = self.conv11(x)
-        else:
-            x = self.conv1(x[:,0:3])
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.maxpool(x) 
-
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)            
-
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1) 
-
-        xs = self.fc(x)
-        xs = xs + self.mean.to(device=xs.device)  
-
-        scale = xs[:,0]
-        trans = xs[:,1:3]
-        rot = xs[:,3:6]   
-        theta = xs[:,6:51]
-        beta = xs[:,51:] 
-
-        x3d,faces,tsa_pose = rot_pose_beta_to_mesh(rot,theta,beta)
-
-        verts = x3d[:,21:]
-        joints = x3d[:,0:21]
-
-        verts *= 1000.0
-        joints *= 1000.0
+            #import pdb; pdb.set_trace()
+            if self.get_gt_depth and gt_verts is not None:
+                gt_depth = self.renderer_NR(gt_verts, faces, mode='depth')
+                gt_depth = gt_depth * (gt_depth < 1).float()#set 100 into 0
+            #import pdb; pdb.set_trace()
         
-        keypt = trans.unsqueeze(1) + scale.unsqueeze(1).unsqueeze(2) * joints[:,:,:2] 
-        # x = x.view(x.size(0),-1)      
-              
-        #x3d = scale.unsqueeze(1).unsqueeze(2) * x3d
-        #x3d[:,:,:2]  = trans.unsqueeze(1) + x3d[:,:,:2] 
-        verts  = verts  - joints[:,9,:].unsqueeze(1) # Make all vert relative to middle finger MCP
-        joints = joints - joints[:,9,:].unsqueeze(1) # Make all joint relative to middle finger MCP
-        keypt = keypt - keypt[:,9,:].unsqueeze(1)
+        output['faces'] = faces
+        output['re_sil'] = re_sil
+        output['re_img'] = re_img
+        output['re_depth'] = re_depth
+        output['gt_depth'] = gt_depth
+        '''
         
-        return keypt, joints, verts, theta, faces[0], torch.cat([scale.unsqueeze(1), trans, rot, theta, beta], dim=1)
-
-def resnet34_Mano(pretrained=False,input_option=1, **kwargs):
-    
-    model = ResNet_Mano(BasicBlock, [3, 4, 6, 3], input_option, **kwargs)    
-    model.fc = nn.Linear(512 * 1, 22)
-
-    return model
+        return output
+    def forward(self, images=None, task='train', requires=['joints', 'heatmaps']):
+        if task == 'train' or task == 'hm_train':
+            return self.predict_singleview(images, requires)
 
 
 if __name__ == "__main__":
-    model = ResNet_Mano(BasicBlock, [3,4,6,3], input_option = False, num_classes=61)
-    # model = PoseHand(inp_neurons=2048)
-    device = torch.device("cpu")
-    model.to(device)
-    model.eval()
-
-    bs = 10
-    image = torch.randn(bs, 1, 224,224)
-    # x, x3d = model(image)
-    # print(x.shape)
-    # print(x3d.shape)
-    # features = torch.randn(bs, 2048)
-    keypt, joints, verts, theta, faces, params = model(image)
-    print(params.shape)
-    print(keypt.shape)
-    print(joints.shape)
-    print(verts.shape)
-    print(faces.shape)
-    # print(theta.shape)
-    # print(beta.shape)
-    # print(scale.shape)
-    # print(trans.shape)
-    # print(rot.shape)
-    # print(tsa_poses.shape)
+    model = Model()
+    print(model)

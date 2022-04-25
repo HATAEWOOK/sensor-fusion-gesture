@@ -1,5 +1,4 @@
 import sys
-from cv2 import Param_MAT
 sys.path.append('.')
 sys.path.append('..')
 # sys.path.append("C:\\Users\\UVRLab\\Desktop\\sfGesture")
@@ -11,9 +10,13 @@ from torch.utils.data import Subset
 import logging
 import open3d as o3d
 import torch
+import torch.nn.functional
+import torch.nn as nn
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
+from celluloid import Camera
+import torch.cuda.comm
 
 from utils.utils_mpi_model import MANO
 from utils.hand_detector import HandDetector
@@ -114,34 +117,6 @@ class Data_preprocess():
                 else:
                         return com/num
 
-class ConcatDataLoader:
-        def __init__(self, dataloaders):
-                self.loaders = dataloaders
-        
-        def __iter__(self):
-                self.iters = [iter(loader) for loader in self.loaders]
-                self.idx_cycle = itertools.cycle(list(range(len(self.loaders))))
-                return self
-        
-        def __next__(self):
-                loader_idx = next(self.idx_cycle)
-                loader = self.iters[loader_idx]
-                batch = next(loader)
-                if isinstance(loader.dataset, Subset):
-                        dataset = loader.dataset.dataset
-                else:
-                        dataset = loader.dataset
-                dat_name = dataset.hand_dataset.dat_name
-                batch["dataset"] = dat_name
-                batch["root"] = "wrist"
-                batch["use_streohands"] = True
-                batch["split"] = dataset.pose_dataset.split
-
-                return batch
-
-        def __len__(self):
-                return sum(len(loader) for loader in self.loaders)
-
 def mklogger(log_path, mode = 'w'):
         logger = logging.getLogger()
         logger.setLevel(logging.INFO)
@@ -174,7 +149,6 @@ class AverageMeter():
                 self.sum += val * n
                 self.count += n
                 self.avg = self.sum / self.count
-
 def set_vis():
         w = 320
         h = 240
@@ -191,23 +165,53 @@ def set_vis():
 
         return vis
 
-class Mano2depth():
-        def __init__(self, verts, faces):
-                #MSRA camera intrinsic parameters
-                self.w = 320
-                self.h = 240
-                self.fx = self.fy = 241.42
-                self.cx = self.w / 2 - 0.5
-                self.cy = self.h / 2 - 0.5
-                self.cube = [180,180,180]
-                self.verts = verts
-                self.faces = faces.detach().cpu()
-                self.bs = verts.shape[0]
+def normalize_image(im):
+    """
+    byte -> float, / pixel_max, - 0.5
+    :param im: torch byte tensor, B x C x H x W, 0 ~ 255
+    :return:   torch float tensor, B x C x H x W, -0.5 ~ 0.5
+    """
+    return ((im.float() / 255.0) - 0.5)
+
+
+def denormalize_image(im):
+    """
+    float -> byte, +0.5, * pixel_max
+    :param im: torch float tensor, B x C x H x W, -0.5 ~ 0.5
+    :return:   torch byte tensor, B x C x H x W, 0 ~ 255
+    """
+    ret = (im + 0.5) * 255.0
+    return ret.byte()
                 
-        def mesh2depth(self, vis, path = None):
+
+class Mano2depth():
+        def __init__(self, verts, faces, joints):
+                #MSRA camera intrinsic parameters
+                self.w = 224
+                self.h = 224
+                self.verts = verts
+                self.faces = faces
+                self.joints = joints
+                self.bs = verts.shape[0]
+        
+        def set_vis(self, Ks, vis):
+                fx = Ks[0,0]
+                fy = Ks[1,1]
+                cx = Ks[0,2]
+                cy = Ks[1,2]
+                w = 225
+                h = 225
+                camera_param = vis.get_view_control().convert_to_pinhole_camera_parameters()
+                camera_param.intrinsic.set_intrinsics(w, h, fx, fy, cx, cy)
+                vis.get_view_control().convert_from_pinhole_camera_parameters(camera_param)
+
+                return vis
+                
+        def mesh2depth(self, Ks, vis, path = None):
                 depths = []
                 save_screen_image = True
-                for vert in self.verts:
+                for vert, K in zip(self.verts, Ks):
+                        vis = self.set_vis(K, vis)
                         mesh = o3d.geometry.TriangleMesh()
                         vert = vert.detach().cpu()
                         mesh.vertices = o3d.utility.Vector3dVector(vert)
@@ -223,8 +227,8 @@ class Mano2depth():
                         depth = np.asarray(depth)
                         if np.max(depth) != 0:
                                 depth /= np.max(depth)
-                        # else:   
-                        #         print("depth is not captured", np.min(depth), np.max(depth))
+                        else:   
+                                print("depth is not captured", np.min(depth), np.max(depth))
                         # hd = HandDetector(depth, self.fx, self.fy)
                         # depth_resize, com = hd.croppedNormDepth()
                         depth_resize = cv2.resize(depth, (224,224))
@@ -234,15 +238,71 @@ class Mano2depth():
 
                 return torch.FloatTensor(np.asarray(depths))
 
+        def mesh_save(self, Ks, vis, path = None):
+                save_screen_image = True
+                vert = self.verts[0].clone().detach().cpu()
+                # faces = self.faces[0].clone().detach().cpu()
+                faces = self.faces.clone().detach().cpu()
+                K = Ks[0].clone().detach().cpu()
+                vis = self.set_vis(K, vis)
+                mesh = o3d.geometry.TriangleMesh()
+                mesh.vertices = o3d.utility.Vector3dVector(vert)
+                mesh.triangles = o3d.utility.Vector3iVector(faces)
+                mesh.compute_vertex_normals()
+                vis.add_geometry(mesh)
+                if path is not None and save_screen_image:
+                        vis.capture_screen_image(path, do_render = True)
+                        save_screen_image = False
+                vis.clear_geometries()
+                vis.reset_view_point(True)
+
+        def joint_save(self, Ks, vis, path = None, radius = 0.2):
+                joint = self.joints[0].clone().detach().cpu()
+                K = Ks[0].clone().detach().cpu()
+                i=0
+                vis = self.set_vis(K, vis)
+                for j in joint:
+                        p = o3d.geometry.TriangleMesh.create_sphere(radius)
+                        p.compute_vertex_normals()
+                        if i == 0:
+                                p.paint_uniform_color([1,0,0])
+                        elif i > 0 and i <= 4:
+                                p.paint_uniform_color([1,1,0])
+                        elif i > 4 and i <= 8:
+                                p.paint_uniform_color([0,1,0])
+                        elif i > 8 and i <= 12:
+                                p.paint_uniform_color([0,1,1])
+                        elif i > 12 and i <= 16:
+                                p.paint_uniform_color([0,0,1])
+                        elif i > 16 and i <= 20:
+                                p.paint_uniform_color([0,0,0])
+                        i += 1
+                        p.translate(j)
+                        vis.add_geometry(p)
+                vis.capture_screen_image(path, do_render = True)
+                vis.clear_geometries()
+                vis.reset_view_point(True)
+
 def save_image(img, path):
         img = img.squeeze().cpu()
         # img *= 100
         fig = plt.figure(1, figsize=[6, 6])
-        plt.imshow(img, cmap='gray')
-        plt.imshow(img)
-        plt.axis('off')
+        ax = fig.add_subplot(111)
+        ax.imshow(img, cmap='gray')
+        ax.axis('off')
         fig.savefig(path)
         plt.close(fig)
+
+def proj_func(xyz, K):
+    '''
+    xyz: N x num_points x 3
+    K: N x 3 x 3
+    '''
+    uv = torch.bmm(K,xyz.permute(0,2,1))
+    uv = uv.permute(0, 2, 1)
+    out_uv = torch.zeros_like(uv[:,:,:2]).to(device=uv.device)
+    out_uv = torch.addcdiv(out_uv, uv[:,:,:2], uv[:,:,2].unsqueeze(-1).repeat(1,1,2), value=1)
+    return out_uv
 
 def orthographic_proj_withz(X, trans, scale, offset_z=0.):
     """
@@ -253,6 +313,7 @@ def orthographic_proj_withz(X, trans, scale, offset_z=0.):
     """
     scale = scale.contiguous().view(-1, 1, 1)
     trans = trans.contiguous().view(scale.size(0), 1, -1)
+    trans = trans[:,:,:2]
 
     proj = scale * X
 
@@ -260,75 +321,361 @@ def orthographic_proj_withz(X, trans, scale, offset_z=0.):
     proj_z = proj[:, :, 2, None] + offset_z
     return torch.cat((proj_xy, proj_z), 2)
 
-def regularizer_loss(ang, theta=None):
-        ang = ang.detach().cpu()
-        mano = MANO()
-        limits = []
+def regularizer_loss(pose):
+    #tilt-swing-azimuth pose prior loss
+    '''
+    tsaposes: (B,15,3)
+    '''
+    pi = np.pi
+    '''
+    max_nonloss = torch.tensor([[3.15,0.01,0.01],
+                                [5*pi/180,10*pi/180,100*pi/180],#0
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,10*pi/180,100*pi/180],#3
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,10*pi/180,100*pi/180],#6
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,10*pi/180,100*pi/180],#9
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [90*pi/180,pi/8,pi/8],#12
+                                [5*pi/180,5*pi/180,pi/8],
+                                [5*pi/180,5*pi/180,100*pi/180]]).float().to(tsaposes.device)
+    min_nonloss = torch.tensor([[3.13,-0.01,-0.01],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#0
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#3
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#6
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#9
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [0,-pi/8,-pi/8],#12
+                                [-5*pi/180,-5*pi/180,-pi/8],
+                                [-5*pi/180,-5*pi/180,-10*pi/180]]).float().to(tsaposes.device)
+    '''
+    max_nonloss = torch.tensor([[5*pi/180,10*pi/180,100*pi/180],#0 INDEX
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,10*pi/180,100*pi/180],#3 MIDDLE
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,20*pi/180,100*pi/180],#6 PINKY
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,10*pi/180,100*pi/180],#9 RING
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [90*pi/180,3*pi/16,pi/8],#12 THUMB
+                                [5*pi/180,5*pi/180,pi/8],
+                                [5*pi/180,5*pi/180,100*pi/180]]).float().to(pose.device)
+    min_nonloss = torch.tensor([[-5*pi/180,-10*pi/180,-10*pi/180],#0
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#3
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-20*pi/180,-10*pi/180,-10*pi/180],#6
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#9
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [0,-pi/8,-pi/8],#12
+                                [-5*pi/180,-5*pi/180,-pi/8],
+                                [-5*pi/180,-5*pi/180,-20*pi/180]]).float().to(pose.device)
+    pose_errors = torch.where(pose>max_nonloss.unsqueeze(0),pose-max_nonloss.unsqueeze(0),torch.zeros_like(pose)) + torch.where(pose<min_nonloss.unsqueeze(0),-pose+min_nonloss.unsqueeze(0),torch.zeros_like(pose))
+    pose_loss = torch.mean(pose_errors.mul(torch.tensor([1,1,2]).float().to(pose_errors.device)))#.cpu()
+    return pose_loss
 
-        for i in range(ang.shape[0]):
-                if theta is None:
-                        limit = mano.compute_ang_limit(ang[i])
-                else:
-                        limit = mano.compute_pose_limit(ang[i])
-                limits.append(limit.detach())
+def shape_loss(beta):
+        shape_loss = torch.nn.functional.mse_loss(beta, torch.zeros_like(beta).to(beta.device))
+
+        return shape_loss
+
+def direction(j3d):
+        index_vec = j3d[:, 5, :] - j3d[:, 0, :]
+        mid_vec = j3d[:, 9, :] - j3d[:, 0, :]
+        ring_vec = j3d[:, 13, :] - j3d[:, 0, :]
+        little_vec = j3d[:, 17, :] - j3d[:, 0, :]
+        hand_vec = index_vec + mid_vec + ring_vec + little_vec
+        hand_direc = hand_vec / torch.norm(hand_vec, dim = 1).unsqueeze(1)
+
+        return hand_direc
+
+def direction_loss(target_j3d, pred_j3d):
+        bs = target_j3d.shape[0]
+        device = target_j3d.device
+        target_direc = direction(target_j3d)
+        pred_direc = direction(pred_j3d)
+        # loss = torch.nn.functional.mse_loss(target_direc, pred_direc)
+        inner_product = torch.bmm(target_direc.view(bs, 1, -1), pred_direc.view(bs, -1, 1)).squeeze() #cos theta
+        loss = torch.nn.functional.mse_loss(inner_product, torch.ones(bs).to(device))
         
-        loss = np.asarray(limits)
+        return torch.mean(loss**2)
+        
+def hm_integral_loss(target_j2d, hm_2d_keypt_list):
+        device = hm_2d_keypt_list[-1].device
+        integral_loss = torch.zeros(1).to(device)
+        for hm_2d_keypt in hm_2d_keypt_list:
+                hm_2d_keypt_distance = torch.nn.functional.mse_loss(hm_2d_keypt, target_j2d)
+                hm_2d_keypt_con = torch.ones_like(hm_2d_keypt_distance)
+                integral_loss += torch.sum(hm_2d_keypt_distance.mul(hm_2d_keypt_con**2))/torch.sum((hm_2d_keypt_con**2))
 
-        return np.mean(loss)
+        return integral_loss
 
-def normalize(values, dim = '3d'):
-    values = values.detach()
+def normalize(param, mode = 'joint'):
+        if mode == 'joint':
+                norm_scale = torch.norm(param[:,10,:] - param[:,9,:], dim=1) #[bs]
+                param = param - param[:,9,:].unsqueeze(1)
+                param = param / norm_scale.unsqueeze(1).unsqueeze(2)
+        elif mode == 'keypt':
+                norm_scale = torch.norm(param[:,10,:] - param[:,9,:], dim=1)
+                param = param / norm_scale.unsqueeze(1).unsqueeze(2)
 
-    for i in range(values.shape[0]):
-        if dim == '3d':
-            meanx, meany, meanz = torch.mean(values[i,:,0]),torch.mean(values[i,:,1]),torch.mean(values[i,:,2])
-            stdx, stdy, stdz = torch.std(values[i,:,0]),torch.std(values[i,:,1]),torch.std(values[i,:,2])
+        return param
 
-            if stdx == 0: 
-                values[i,:,0] = 0 
-            else: 
-                values[i,:,0]=(values[i,:,0] - meanx) / stdx
-            if stdy == 0: 
-                values[i,:,1] = 0 
-            else: 
-                values[i,:,1]=(values[i,:,1] - meany) / stdy
-            if stdz == 0: 
-                values[i,:,2] = 0 
-            else: 
-                values[i,:,2]=(values[i,:,2] - meanz) / stdz
+class ResultGif:
+        def __init__(self):
+                fig_3d = plt.figure(figsize = (5,5))
+                fig_2d = plt.figure(figsize = (5,5))
+                fig_1d = plt.figure(figsize = (5,5))
+                self.camera_3d = Camera(fig_3d)
+                self.camera_2d = Camera(fig_2d)
+                self.camera_1d = Camera(fig_1d)
+                self.ax_3d = fig_3d.add_subplot(projection='3d')
+                self.ax_2d = fig_2d.add_subplot()
+                self.ax_1d = fig_1d.add_subplot()
 
+        def update(self, pred, target):
+                if pred.shape[-1] == 3:
+                        self.ax_3d.scatter(pred[:, 0], pred[:, 1], pred[:, 2], marker='o')
+                        self.ax_3d.scatter(target[:, 0], target[:, 1], target[:, 2], marker='^')
+                        self.camera_3d.snap()
+                        self.ax_3d.clear()
+                if pred.shape[-1] == 2:
+                        self.ax_2d.scatter(pred[:, 0], pred[:, 1], c='r')
+                        self.ax_2d.scatter(target[:, 0], target[:, 1], c='b')
+                        self.camera_2d.snap()
+                        self.ax_2d.clear()
+                else:
+                        self.ax_1d.scatter(target, pred, c='r')
+                        self.camera_1d.snap()
+                        self.ax_1d.clear()
 
-        if dim == '2d':
-            meanx, meany = torch.mean(values[i,:,0]),torch.mean(values[i,:,1])
-            stdx, stdy = torch.std(values[i,:,0]),torch.std(values[i,:,1])
+        def save(self):
+                animation_3d = self.camera_3d.animate(interval=50, blit=True)
+                animation_2d = self.camera_2d.animate(interval=50, blit=True)
+                animation_1d = self.camera_1d.animate(interval=50, blit=True)
+                save_path = '/root/sensor-fusion-gesture/ckp/FreiHAND/logs'
+                animation_3d.save(
+                        # os.path.join(save_path, 'joint.gif')
+                        'joint.gif'
+                )
+                animation_2d.save(
+                        # os.path.join(save_path, 'keypt.gif')
+                        'keypt.gif'
+                )
+                animation_1d.save(
+                        # os.path.join(save_path, 'param.gif')
+                        'param.gif'
+                )
 
-            if stdx == 0: 
-                values[i,:,0] = 0 
-            else: 
-                values[i,:,0]=(values[i,:,0] - meanx) / stdx
-            if stdy == 0: 
-                values[i,:,1] = 0 
-            else: 
-                values[i,:,1]=(values[i,:,1] - meany) / stdy
+def compute_uv_from_integral(hm, resize_dim):
+    """
+    https://github.com/JimmySuen/integral-human-pose
+    
+    :param hm: B x K x H x W (Variable)
+    :param resize_dim:
+    :return: uv in resize_dim (Variable)
+    
+    heatmaps: C x H x W
+    return: C x 3
+    """
+    upsample = nn.Upsample(size=resize_dim, mode='bilinear', align_corners=True)  # (B x K) x H x W
+    resized_hm = upsample(hm).view(-1, resize_dim[0], resize_dim[1]) #[bs*21, 256, 256]
+    #import pdb; pdb.set_trace()
+    num_joints = resized_hm.shape[0] #bs*21
+    hm_width = resized_hm.shape[-1] #256
+    hm_height = resized_hm.shape[-2] #256
+    hm_depth = 1
+    pred_jts = softmax_integral_tensor(resized_hm, num_joints, hm_width, hm_height, hm_depth) #[1,2016]
+    pred_jts = pred_jts.view(-1,hm.size(1), 3)
+    #import pdb; pdb.set_trace()
+    return pred_jts #[bs, 21, 3]
 
-    return values
+def softmax_integral_tensor(preds, num_joints, hm_width, hm_height, hm_depth):
+    # global soft max
+    #preds = preds.reshape((preds.shape[0], num_joints, -1))
+    preds = preds.reshape((1, num_joints, -1)) #[1, bs*21, 65536]
+    preds = torch.nn.functional.softmax(preds, 2)
+    # integrate heatmap into joint location
+    x, y, z = generate_3d_integral_preds_tensor(preds, num_joints, hm_width, hm_height, hm_depth)
+    #x = x / float(hm_width) - 0.5
+    #y = y / float(hm_height) - 0.5
+    #z = z / float(hm_depth) - 0.5
+    preds = torch.cat((x, y, z), dim=2)
+    preds = preds.reshape((preds.shape[0], num_joints * 3))
+    return preds
+
+def generate_3d_integral_preds_tensor(heatmaps, num_joints, x_dim, y_dim, z_dim):
+    assert isinstance(heatmaps, torch.Tensor)
+    heatmaps = heatmaps.reshape((heatmaps.shape[0], num_joints, z_dim, y_dim, x_dim))#[1,B*21,1,height,width]
+    accu_x = heatmaps.sum(dim=2)
+    accu_x = accu_x.sum(dim=2)#[1,B*21,width=256]
+    accu_y = heatmaps.sum(dim=2)
+    accu_y = accu_y.sum(dim=3)#[1,B*21,hight=256]
+    accu_z = heatmaps.sum(dim=3)
+    accu_z = accu_z.sum(dim=3)#[1,B*21,depth=1]
+    accu_x = accu_x * torch.cuda.comm.broadcast(torch.arange(x_dim).type(torch.cuda.FloatTensor), devices=[accu_x.device.index])[0]
+    accu_y = accu_y * torch.cuda.comm.broadcast(torch.arange(y_dim).type(torch.cuda.FloatTensor), devices=[accu_y.device.index])[0]
+    accu_z = accu_z * torch.cuda.comm.broadcast(torch.arange(z_dim).type(torch.cuda.FloatTensor), devices=[accu_z.device.index])[0]
+    accu_x = accu_x.sum(dim=2, keepdim=True) #[1,672,1]
+    accu_y = accu_y.sum(dim=2, keepdim=True)
+    accu_z = accu_z.sum(dim=2, keepdim=True)
+    #import pdb; pdb.set_trace()
+    return accu_x, accu_y, accu_z
+
 
 
 if __name__ == "__main__":
-        bs = 10 # Batchsize
-        beta = torch.zeros([bs,10], dtype=torch.float32)
-        rvec = torch.zeros([bs,3], dtype=torch.float32)
-        # rvec = torch.tensor([[np.pi/2,0,0]], dtype=torch.float32)
-        tvec = torch.zeros([bs,3], dtype=torch.float32)
+        # data = '3d'
+        # data = '2d'
+        data = 'pose'
+        # data = 'mano'
+        results = 25
 
-        model = MANO()
-        pose = torch.zeros([bs,15,3], dtype=torch.float32)
-        ppca = torch.zeros([bs,45], dtype=torch.float32)
-        # pose = model.convert_pca_to_pose(ppca)
-        vertices, joints = model.forward(beta, pose, rvec, tvec)
-        m2d = Mano2depth(vertices, model.F)
-        pred = m2d.mesh2depth()
-        print(pred.shape) #[bs, 224, 224]
+        if data == '3d':
+                fig = plt.figure(figsize = (5,5))
+                ax_3d = fig.add_subplot(111, projection='3d')
+                camera = Camera(fig)
+                path = '/root/sensor-fusion-gesture/ckp/FreiHAND/results%d'%results
+                for i in range(100):
+                        for j in [10,20]:
+                                pred_joint = np.loadtxt(os.path.join(path, 'pred', 'E%d_%d_joint.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+                                target_joint = np.loadtxt(os.path.join(path, 'target', 'E%d_%d_joint.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+
+                                ax_3d.scatter(pred_joint[:, 0], pred_joint[:, 1], pred_joint[:, 2], marker='o')
+                                ax_3d.scatter(target_joint[:, 0], target_joint[:, 1], target_joint[:, 2], marker='^')
+                                camera.snap()
+                        
+                        print(i)
+
+                animation = camera.animate(interval=200, blit=True)
+                animation.save(
+                                # os.path.join(save_path, 'joint.gif')
+                                'joint.gif'
+                        )
+        elif data == '2d':
+                fig = plt.figure(figsize = (5,5))
+                ax_2d = fig.add_subplot(111)
+                camera = Camera(fig)
+                path = '/root/sensor-fusion-gesture/ckp/FreiHAND/results%d'%results
+                for i in range(100):
+                        for j in [10]:
+                                pred_keypt = np.loadtxt(os.path.join(path, 'pred', 'E%d_%d_keypt.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+                                target_keypt = np.loadtxt(os.path.join(path, 'target', 'E%d_%d_keypt.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+
+                                ax_2d.scatter(pred_keypt[:, 0], pred_keypt[:, 1], c='r')
+                                ax_2d.scatter(target_keypt[:, 0], target_keypt[:, 1], c='b')
+                                camera.snap()
+                        
+                        print(i)
+
+                animation = camera.animate(interval=200, blit=True)
+                animation.save(
+                                # os.path.join(save_path, 'joint.gif')
+                                'keypt.gif'
+                        )
+        elif data == 'scale':
+                fig = plt.figure(figsize = (5,5))
+                ax_2d = fig.add_subplot(111)
+                camera = Camera(fig)
+                path = '/root/sensor-fusion-gesture/ckp/FreiHAND/results%d'%results
+                for i in range(100):
+                        for j in [10]:
+                                pred_mano = np.loadtxt(os.path.join(path, 'pred', 'E%d_%d_mano.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+                                target_mano = np.loadtxt(os.path.join(path, 'target', 'E%d_%d_mano.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+
+                                target_mano = target_mano[55:]
+                                pred_mano = pred_mano[55:]
+                                ax_2d.plot(np.arange(0,45), target_mano, c='r')
+                                ax_2d.plot(np.arange(0,45), pred_mano, c='b')
+                                ax_2d.set_yscale("log")
+                                ax_2d.text(-4, 4, "%d_%d"%(i+1, j))
+                                camera.snap()
+                        
+                        print(i)
+
+                animation = camera.animate(interval=200, blit=True)
+                animation.save(
+                                # os.path.join(save_path, 'joint.gif')
+                                'scale.gif'
+                        )
+        elif data == 'pose':
+                fig = plt.figure(figsize = (5,5))
+                ax_2d = fig.add_subplot(111)
+                camera = Camera(fig)
+                path = '/root/sensor-fusion-gesture/ckp/FreiHAND/results%d'%results
+                pi = np.pi
+                max_nonloss = np.array([[5*pi/180,10*pi/180,100*pi/180],#0 INDEX
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,10*pi/180,100*pi/180],#3 MIDDLE
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,20*pi/180,100*pi/180],#6 PINKY
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,10*pi/180,100*pi/180],#9 RING
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [5*pi/180,5*pi/180,100*pi/180],
+                                [90*pi/180,3*pi/16,pi/8],#12 THUMB
+                                [5*pi/180,5*pi/180,pi/8],
+                                [5*pi/180,5*pi/180,100*pi/180]])
+                min_nonloss = np.array([[-5*pi/180,-10*pi/180,-10*pi/180],#0
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#3
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-20*pi/180,-10*pi/180,-10*pi/180],#6
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-10*pi/180,-10*pi/180],#9
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [-5*pi/180,-5*pi/180,-10*pi/180],
+                                [0,-pi/8,-pi/8],#12
+                                [-5*pi/180,-5*pi/180,-pi/8],
+                                [-5*pi/180,-5*pi/180,-20*pi/180]])
+                for i in range(100):
+                        for j in [10,20]:
+                                ax_2d.plot(np.arange(0,45), max_nonloss.reshape(-1), c='r')
+                                ax_2d.plot(np.arange(0,45), min_nonloss.reshape(-1), c='b')
+                                pred_mano = np.loadtxt(os.path.join(path, 'pred', 'E%d_%d_mano.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+                                target_mano = np.loadtxt(os.path.join(path, 'target', 'E%d_%d_mano.txt'%(i+1,j)), dtype=float, delimiter=' ', skiprows=0)
+                                target_mano = target_mano[10:55]
+                                pred_mano = pred_mano[10:55]
+                                ax_2d.scatter(np.arange(0,45), target_mano, c='r')
+                                ax_2d.scatter(np.arange(0,45), pred_mano, c='b')
+                                ax_2d.text(-4, 4, "%d_%d"%(i+1, j))
+                                camera.snap()
+                        
+                        print(i)
+
+                animation = camera.animate(interval=200, blit=True)
+                animation.save(
+                                # os.path.join(save_path, 'joint.gif')
+                                'pose.gif'
+                        )
+        
 
 
                 

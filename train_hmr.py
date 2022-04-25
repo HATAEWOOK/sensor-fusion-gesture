@@ -141,9 +141,16 @@ class Trainer:
 
         return 0
         '''
-        kwargs = {
+        kwargs_train = {
             'num_workers' : cfg.num_workers,
-            'batch_size' : cfg.batch_size,
+            'batch_size' : cfg.train_batch_size,
+            'shuffle' : True,
+            'drop_last' : True,
+        }
+
+        kwargs_test = {
+            'num_workers' : cfg.num_workers,
+            'batch_size' : cfg.test_batch_size,
             'shuffle' : True,
             'drop_last' : True,
         }
@@ -155,8 +162,8 @@ class Trainer:
         train_size = int(0.8*len(dataset))
         test_size = len(dataset) - train_size
         train_data, test_data = torch.utils.data.random_split(dataset, [train_size, test_size])
-        self.train_dataloader = DataLoader(train_data, **kwargs)
-        self.test_dataloader = DataLoader(test_data, **kwargs)
+        self.train_dataloader = DataLoader(train_data, **kwargs_train)
+        self.test_dataloader = DataLoader(test_data, **kwargs_test)
         print("Data size : ",len(self.train_dataloader), len(self.test_dataloader))
 
 
@@ -190,7 +197,7 @@ class Trainer:
                 target_keypt = normalize(target_keypt, dim='2d')
                 keypt = normalize(keypt, dim='2d')
                 target_joint = normalize(target_joint)
-                joint - normalize(joint)
+                joint = normalize(joint)
 
             depth_loss = self.depth_criterion(pred_depth.to(self.device), depth_image.squeeze())
             j3d_loss = self.joint_criterion(joint.to(self.device), target_joint.squeeze())
@@ -263,7 +270,7 @@ class Trainer:
                     target_keypt = normalize(target_keypt, dim='2d')
                     keypt = normalize(keypt, dim='2d')
                     target_joint = normalize(target_joint)
-                    joint - normalize(joint)
+                    joint = normalize(joint)
 
                 m2d = Mano2depth(vert, faces)
                 pred_depth = m2d.mesh2depth(self.vis, path = vis_path) #[bs, 224, 224]
@@ -410,12 +417,12 @@ if __name__ == "__main__":
 
     
     configs = {
-        'manual_seed' : 24657,
+        'manual_seed' : 29648,
         'ckp_dir' : '/root/sensor-fusion-gesture/ckp/pretrained',
         # 'ckp_dir' : 'D:/sfGesture/ckp',
         'lr' : 1e-4,
-        'lr_decay_gamma' : 0.1,
-        'lr_decay_step' : 10,
+        'lr_decay_gamma' : 0.5,
+        'lr_decay_step' : 20,
         'lr_reduce' : False,
         'expr_ID' : 'test1',
         'cuda_id' : 0,
@@ -424,19 +431,20 @@ if __name__ == "__main__":
         # 'dataset_dir' : 'D:/datasets/cvpr14_MSRAHandTrackingDB/cvpr14_MSRAHandTrackingDB',
         'try_num' : 0,
         'optimizer' : "adam",
-        'weight_decay' : 1e-5,
+        'weight_decay' : 0.1,
         'momentum' : 0.9,
         'use_multigpu' : True,
         'best_model' : None, 
         'num_workers' : 4, 
-        'batch_size' : 32,
+        'train_batch_size' : 32,
+        'test_batch_size' : 8,
         'ckpt_term' : 100, 
-        'n_epochs' : 200,
+        'n_epochs' : 100,
         'fitting' : True,
-        'depth_loss_weight': 1e5,
+        'depth_loss_weight': 0,
         'j2d_loss_weight' : 1,
-        'j3d_loss_weight' :0,
-        'reg_loss_weight' : 1e2,
+        'j3d_loss_weight' :1,
+        'reg_loss_weight' : 1,
         'normalize' : False,
         'SmmothL1loss_depth' : True,
         'MSEloss_depth' : False,
@@ -452,7 +460,7 @@ if __name__ == "__main__":
         'config_num': 0,
         'iter' : False,
         'to_mano':None,
-        'pretrained': '/root/sensor-fusion-gesture/pretrain_ckp/results0/best_model/S00_019_net.pt',
+        'pretrained': '/root/sensor-fusion-gesture/pretrain_ckp/results6/best_model/S00_023_net.pt',
     } 
 
 

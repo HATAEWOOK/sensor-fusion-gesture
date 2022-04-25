@@ -282,7 +282,7 @@ class ResNet(nn.Module):
         # x = torch.flatten(x, 1) #[bs, 2048]
         # Note: Comment off the classifier as #바꿀
         
-        x = self.fc(x) 
+        # x = self.fc(x) 
 
         return x
 
@@ -420,12 +420,12 @@ def wide_resnet101_2(pretrained: bool = False, progress: bool = True, **kwargs: 
     return _resnet("wide_resnet101_2", Bottleneck, [3, 4, 23, 3], pretrained, progress, **kwargs)
 
 if __name__ == "__main__":
-    model = resnet152()
+    model = resnet50()
     device = torch.device('cuda' if torch.cuda.is_available() and True else 'cpu')
     model.to(device)
     model.eval()
 
     bs = 10
-    image = torch.randn(bs, 1, 224,224)
+    image = torch.randn(bs, 3, 224,224).cuda()
     output = model(image) #[bs, 2048]
     print('output: ', output.shape)

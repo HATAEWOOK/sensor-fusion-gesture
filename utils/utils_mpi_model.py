@@ -28,7 +28,7 @@ class MANO(nn.Module):
         #################################
         ### Load parameters from file ###
         #################################
-        file_path = './model/MANO_RIGHT.pkl'
+        file_path = '/root/sensor-fusion-gesture/model/MANO_RIGHT.pkl'
         # print(os.path.isfile(file_path))
         dd = pickle.load(open(file_path, 'rb'), encoding='latin1')
 
@@ -137,29 +137,68 @@ class MANO(nn.Module):
         # Values adapted from
         # HOnnotate: A method for 3D Annotation of Hand and Object Poses Supplementary Material
         # https://www.tugraz.at/fileadmin/user_upload/Institute/ICG/Documents/team_lepetit/images/hampali/supplementary.pdf
-        plim = np.array([
-            # Index
-            [[ 0.00, 0.45], [-0.15, 0.20], [0.10, 1.80]], # MCP
-            [[-0.30, 0.20], [ 0.00, 0.00], [0.00, 0.20]], # PIP
-            [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
-            # Middle
-            [[ 0.00, 0.00], [-0.15, 0.15], [0.10, 2.00]], # MCP
-            [[-0.50,-0.20], [ 0.00, 0.00], [0.00, 2.00]], # PIP
-            [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
-            # Little
-            [[-1.50,-0.20], [-0.15, 0.60], [-0.10, 1.60]], # MCP
-            [[ 0.00, 0.00], [-0.50, 0.60], [ 0.00, 2.00]], # PIP
-            [[ 0.00, 0.00], [ 0.00, 0.00], [ 0.00, 1.25]], # DIP
-            # Ring
-            [[-0.50,-0.40], [-0.25, 0.10], [0.10, 1.80]], # MCP
-            [[-0.40,-0.20], [ 0.00, 0.00], [0.00, 2.00]], # PIP
-            [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
-            # Thumb
-            [[ 0.00, 2.00], [-0.83, 0.66], [ 0.00, 0.50]], # MCP
-            [[-0.15,-1.60], [ 0.00, 0.00], [ 0.00, 0.50]], # PIP
-            [[ 0.00, 0.00], [-0.50, 0.00], [-1.57, 1.08]]])# DIP
-        self.register_buffer('plim_', torch.as_tensor(plim, dtype=torch.float32)) # [15, 3, 2]
+        # plim = np.array([
+        #     # Index
+        #     [[ 0.00, 0.45], [-0.15, 0.20], [0.10, 1.80]], # MCP
+        #     [[-0.30, 0.20], [ 0.00, 0.00], [0.00, 0.20]], # PIP
+        #     [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
+        #     # Middle
+        #     [[ 0.00, 0.00], [-0.15, 0.15], [0.10, 2.00]], # MCP
+        #     [[-0.50,-0.20], [ 0.00, 0.00], [0.00, 2.00]], # PIP
+        #     [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
+        #     # Little
+        #     [[-1.50,-0.20], [-0.15, 0.60], [-0.10, 1.60]], # MCP
+        #     [[ 0.00, 0.00], [-0.50, 0.60], [ 0.00, 2.00]], # PIP
+        #     [[ 0.00, 0.00], [ 0.00, 0.00], [ 0.00, 1.25]], # DIP
+        #     # Ring
+        #     [[-0.50,-0.40], [-0.25, 0.10], [0.10, 1.80]], # MCP
+        #     [[-0.40,-0.20], [ 0.00, 0.00], [0.00, 2.00]], # PIP
+        #     [[ 0.00, 0.00], [ 0.00, 0.00], [0.00, 1.25]], # DIP
+        #     # Thumb
+        #     [[ 0.00, 2.00], [-0.83, 0.66], [ 0.00, 0.50]], # MCP
+        #     [[-0.15,-1.60], [ 0.00, 0.00], [ 0.00, 0.50]], # PIP
+        #     [[ 0.00, 0.00], [-0.50, 0.00], [-1.57, 1.08]]])# DIP
+        # self.register_buffer('plim_', torch.as_tensor(plim, dtype=torch.float32)) # [15, 3, 2]
 
+        pi = np.pi
+        plim_max = np.array([
+            [5*pi/180,10*pi/180,100*pi/180],#0 INDEX
+            [5*pi/180,5*pi/180,100*pi/180],
+            [5*pi/180,5*pi/180,100*pi/180],
+            [5*pi/180,10*pi/180,100*pi/180],#3 MIDDLE
+            [5*pi/180,5*pi/180,100*pi/180],
+            [5*pi/180,5*pi/180,100*pi/180],
+            [5*pi/180,20*pi/180,100*pi/180],#6 PINKY
+            [5*pi/180,5*pi/180,100*pi/180],
+            [5*pi/180,5*pi/180,100*pi/180],
+            [5*pi/180,10*pi/180,100*pi/180],#9 RING
+            [5*pi/180,5*pi/180,100*pi/180],
+            [5*pi/180,5*pi/180,100*pi/180],
+            [90*pi/180,3*pi/16,pi/8],#12 THUMB
+            [5*pi/180,5*pi/180,pi/8],
+            [5*pi/180,5*pi/180,100*pi/180]
+        ])
+
+        plim_min = np.array([
+            [-5*pi/180,-10*pi/180,-10*pi/180],#0
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [-5*pi/180,-10*pi/180,-10*pi/180],#3
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [-20*pi/180,-10*pi/180,-10*pi/180],#6
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [-5*pi/180,-10*pi/180,-10*pi/180],#9
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [-5*pi/180,-5*pi/180,-10*pi/180],
+            [0,-pi/8,-pi/8],#12
+            [-5*pi/180,-5*pi/180,-pi/8],
+            [-5*pi/180,-5*pi/180,-20*pi/180]
+        ])
+
+        plim = np.stack([plim_min, plim_max], axis=2)
+        self.register_buffer('plim_', torch.as_tensor(plim, dtype=torch.float32)) # [15, 3, 2]
 
         ################################
         ### Define joint angle limit ###
@@ -200,6 +239,7 @@ class MANO(nn.Module):
         bs = ang.shape[0] # Get batch size
 
         return (torch.matmul(ang, self.Z_)).view(bs,-1,3) # [bs, 15, 3]
+
 
 
     def forward(self, beta, pose, rvec, tvec, root):
@@ -264,12 +304,13 @@ class MANO(nn.Module):
 
     def compute_pose_limit(self, theta):
         # ReLU(x)=max(0,x)
-        bs = theta.shape[0]
-        theta = theta.view(-1,3) #[15,3]
         min_ = self.ReLU(self.plim_[:,:,0]-theta) #[15,3,1] - [15,3]
         max_ = self.ReLU(theta-self.plim_[:,:,1]) 
+        sum_ = min_ + max_
+        error = torch.mean(sum_.mul(torch.tensor([1,1,2]).float())).to(theta.device)
 
-        return torch.sum(min_) + torch.sum(max_)
+        # return torch.sum(min_) + torch.sum(max_)
+        return error
 
 
     def generate_Zmat(self, S, V, J):
